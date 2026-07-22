@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(dotnet --list-sdks)",
+      "WebSearch",
+      "Bash(gh api:*)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
