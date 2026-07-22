@@ -22,9 +22,8 @@ builder.Logging.AddSimpleConsole(o =>
     o.SingleLine = true;
     o.TimestampFormat = "HH:mm:ss ";
 });
-builder.Logging.SetMinimumLevel(LogLevel.Information);
-// Native framework logging middleware (UseFunctionInvocation/UseLogging) emits tool-call detail at Debug.
-builder.Logging.AddFilter("Microsoft.Extensions.AI", LogLevel.Debug);
+// Log-level filters (including how verbose Microsoft.Extensions.AI is) come from the
+// "Logging" section in appsettings.json, so verbosity can be changed without recompiling.
 
 builder.Services.Configure<AgentOptions>(builder.Configuration.GetSection("Agent"));
 builder.Services.PostConfigure<AgentOptions>(o =>
