@@ -149,19 +149,8 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         var research = new Stage("research", async (state, token) =>
         {
             var sources = await researcher.Gather(subject, files, token);
-            var ledgerJson = await api.Agent(subject, "EvidenceLedgerAgent", "openrouter", config.WriterModel, Common +
-                $"\nExtract at least {config.MinClaims} useful historical claims from these retained sources. Include life chronology, context and achievements. " +
-                "Each quote MUST be an exact contiguous excerpt from the source Text, at least 30 characters, with whitespace normalised. " +
-                "Use multiple independent domains. Do not turn disputed assertions into certainty. Return ONLY JSON {\"claims\":[{\"id\":\"C1\",\"text\":string,\"sourceId\":\"S1\",\"quote\":string}]}. All fields mandatory.",
-                Data.Write(new
-                {
-                    subject,
-                    sources
-                }), files, "ledger", token);
-            var ledger = Data.Read<Evidence>(ledgerJson);
-            researcher.Validate(ledger, sources);
-            await files.Save("research/evidence-ledger.json", ledgerJson);
-            log.LogInformation("[{Chapter}][EvidenceLedgerAgent][VERIFY] COMPLETE: {Claims} excerpt-backed claims", subject, ledger.Claims.Count);
+            var evidenceBuilder = new EvidenceBuilder(config, api, researcher, log, Common);
+            var ledger = await evidenceBuilder.BuildAsync(subject, sources, files, token);
             return state with
             {
                 Sources = sources,

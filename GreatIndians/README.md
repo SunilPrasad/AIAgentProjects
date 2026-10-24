@@ -53,8 +53,10 @@ The search-tool API is currently beta. OpenRouter credits are required for model
 1. Loads book configuration and Style Bible, then validates that the OpenRouter API key is present.
 2. Searches the live web for each personality and downloads accessible public HTTPS HTML/text sources.
 3. Saves source text snapshots, URLs, retrieval times and SHA-256 hashes.
-4. Builds a structured evidence ledger. Rejects claims whose exact excerpts are absent from saved
-   source text, and requires evidence from at least two source domains.
+4. Indexes exact source excerpts with IDs and character offsets. The model selects excerpt IDs
+   for each claim; code attaches the original saved text instead of asking the model to transcribe it.
+   Validates every binding, source hash and excerpt, requiring at least two source domains. Invalid
+   selections receive automatic repair feedback for up to `maxAttempts`, then remain BLOCKED.
 5. Creates an outline and a first Markdown chapter draft using real MAF AIAgents.
 6. Runs historical, children's narrative and cultural sensitivity review agents concurrently.
 7. Applies a deterministic word-count check. All reviewers must explicitly approve with no findings.
@@ -72,7 +74,8 @@ No images, illustration briefs, PDF, EPUB or publishing files are generated.
 The output tree is organised by book, input/application version and chapter. `current-run.json`
 points to the current version. All earlier version directories are retained. Each chapter stores:
 
-- `research/`: search response, sources and evidence ledger
+- `research/`: search response, sources, indexed exact excerpts, ledger selections, validation
+  findings, source-offset bindings and the final evidence ledger
 - `outline.md` and `drafts/`: planning and all editorial draft versions
 - `reviews/`: individual reviews and quality gates bound to the reviewed draft hash
 - `revisions/`: before/after hashes and findings used for revision
@@ -118,5 +121,8 @@ model calls. A further offline smoke check exercised real MAF agents through an 
 handler, verified instruction/schema forwarding and corrective retries against saved invalid prose,
 then ran the full workflow graph to final Markdown, checkpoints, book review and a cache-only
 restart using fixture outputs. These checks validate application plumbing, not model quality or
-live OpenRouter schema enforcement. Recovery and remaining provider behaviour are implemented
+live OpenRouter schema enforcement. Saved-source diagnostics also reproduced the C2 excerpt
+mismatch, checked exact-text/offset binding (including source annotation markers), rejected modified
+excerpts and verified bounded evidence-repair failure. The full offline workflow verified automatic
+repair of an invalid excerpt selection before proceeding to final Markdown. Recovery and remaining provider behaviour are implemented
 but remain to be verified during that run. See `REVIEW.md` for findings in the original prototype.

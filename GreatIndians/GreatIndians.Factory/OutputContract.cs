@@ -6,7 +6,7 @@ public sealed record OutputContract(string Name, JsonElement Schema)
 {
     public static OutputContract? ForStage(string stage)
     {
-        if (stage == "ledger")
+        if (stage == "ledger" || stage.StartsWith("ledger-", StringComparison.Ordinal))
         {
             return new OutputContract("evidence_ledger", Parse("""
                 {
@@ -21,10 +21,9 @@ public sealed record OutputContract(string Name, JsonElement Schema)
                         "properties": {
                           "id": { "type": "string" },
                           "text": { "type": "string" },
-                          "sourceId": { "type": "string" },
-                          "quote": { "type": "string" }
+                          "excerptId": { "type": "string" }
                         },
-                        "required": ["id", "text", "sourceId", "quote"]
+                        "required": ["id", "text", "excerptId"]
                       }
                     }
                   },

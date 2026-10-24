@@ -83,7 +83,7 @@ public sealed class ModelGateway : IDisposable
                         throw new InvalidDataException("Model returned an empty response.");
                     }
 
-                    if (stage.Contains("review") || stage == "ledger")
+                    if (contract is not null)
                     {
                         text = Data.JsonObject(text);
 
@@ -91,7 +91,7 @@ public sealed class ModelGateway : IDisposable
                         {
                             Data.Read<Review>(text).Validate();
                         }
-                        else if (Data.Read<Evidence>(text).Claims is not { Count: > 0 })
+                        else if (Data.Read<LedgerSelection>(text).Claims is not { Count: > 0 })
                         {
                             throw new InvalidDataException("Empty evidence ledger.");
                         }
