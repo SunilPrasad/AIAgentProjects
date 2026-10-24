@@ -74,7 +74,7 @@ points to the current version. All earlier version directories are retained. Eac
 - `provenance/`: actual prompts, model identifiers and raw provider responses (no API keys)
 - `checkpoints/`: Microsoft Agent Framework filesystem checkpoints
 - `cache/`: input/output-hashed successful stage results
-- `status.json` and, only on approval, `final.md`
+- `status.json`, `failure-details.json` when a chapter fails, and, only on approval, `final.md`
 
 Console messages reflect actual workflow activity. `execution.log` also retains those events;
 raw responses contain provider token usage. Reported OpenRouter cost is logged when supplied;
@@ -85,6 +85,9 @@ On restart, intact in-progress chapters restore their MAF checkpoint. If artifac
 chapter previously completed/failed, the graph re-enters through the application stage cache and
 revalidates its results. Completed successful calls with identical inputs do not repeat. Changes to
 configuration, Style Bible or compiled application invalidate the run namespace conservatively.
+Unchanged research search/source caches can be imported from earlier runs of the same chapter when
+both exact request and content hashes match. Imported provenance points to the retained original
+artifacts. Drafts, approvals and checkpoints are never imported across run versions.
 Changing a draft never transfers its earlier review approval to the changed text. Interrupted calls
 that did not durably save a successful result can repeat. Failed requests have bounded exponential
 backoff; 429/5xx/timeouts are distinguished from editorial rejection. Ctrl+C saves completed stages.
@@ -104,5 +107,7 @@ Different domains alone do not prove editorial independence or scholarly reliabi
 
 The updated application was built successfully with .NET 10.0.103, with zero warnings/errors.
 No unit test project was created. No paid API calls or full end-to-end run were executed: the user
-will perform the live smoke run with an OpenRouter API key. Recovery and provider behaviour are implemented
+will perform the live smoke run with an OpenRouter API key. An offline regression smoke check against a user-supplied saved search response verified source URL
+discovery, nested exception unwrapping and research cache reuse/invalidation. This did not make
+model calls. Recovery and remaining provider behaviour are implemented
 but remain to be verified during that run. See `REVIEW.md` for findings in the original prototype.

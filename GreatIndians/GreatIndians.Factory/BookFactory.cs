@@ -34,7 +34,13 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             ct.ThrowIfCancellationRequested();
             var subject = config.Personalities[i];
             var folder = Path.Combine(root, $"{i + 1:D2}-{Data.Slug(subject)}");
-            var files = new Artifacts(folder, log);
+            var previousChapterFolders = Directory.EnumerateDirectories(Path.Combine(bookRoot, "runs"))
+                .Where(previousRun => previousRun != root)
+                .Select(previousRun => Path.Combine(previousRun, Path.GetFileName(folder)))
+                .Where(Directory.Exists)
+                .OrderByDescending(Directory.GetLastWriteTimeUtc)
+                .ToArray();
+            var files = new Artifacts(folder, log, previousChapterFolders);
             log.LogInformation("[{Chapter}][Orchestrator][START] Chapter {Index}/{Total}", subject, i + 1, config.Personalities.Count);
             try
             {
@@ -55,9 +61,15 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             }
             catch (Exception ex)
             {
-                var status = ex is EditorialException ? "BLOCKED" : "FAILED_TECHNICAL";
+                var cause = FailureDetails.Unwrap(ex);
+                if (cause is OperationCanceledException && ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+                var status = cause is EditorialException ? "BLOCKED" : "FAILED_TECHNICAL";
                 // Known exceptions have safe messages; do not dump full API/SDK exceptions into logs.
-                var reason = ex is EditorialException or InvalidDataException ? ex.Message : ex.GetType().Name;
+                var reason = FailureDetails.Reason(cause);
+                await files.Save("failure-details.json", FailureDetails.Report(ex));
                 var oldFinal = Path.Combine(folder, "final.md");
                 if (File.Exists(oldFinal))
                 {
@@ -101,7 +113,8 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             catch (Exception ex)
             {
                 bookStatus = "BOOK_REVIEW_FAILED_TECHNICAL";
-                log.LogWarning("[BOOK][BookEditorialReviewer][FAILED] {Type}", ex.GetType().Name);
+                await Data.SaveAsync(Path.Combine(root, "book-review", "failure-details.json"), FailureDetails.Report(ex));
+                log.LogWarning("[BOOK][BookEditorialReviewer][FAILED] {Reason}", FailureDetails.Reason(ex));
             }
         }
         var completed = results.Count(r => r.Status == "AI_APPROVED_PENDING_HUMAN");

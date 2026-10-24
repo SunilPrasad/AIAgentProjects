@@ -1,48 +1,111 @@
 using Microsoft.Extensions.Logging;
+
 namespace GreatIndians.Factory;
 
-public sealed class Artifacts(string root, ILogger logger)
+public sealed class Artifacts(string root, ILogger logger, string[]? previousResearchRoots = null)
 {
     public string Root { get; } = root;
+
     private sealed record Entry(string InputHash, string OutputHash, string Content);
-    public Task Save(string name, string content) => Data.SaveAsync(Path.Combine(Root, name), content);
+
+    public Task Save(string name, string content)
+        => Data.SaveAsync(Path.Combine(Root, name), content);
+
     public async Task<string> Cached(string name, string inputs, Func<Task<string>> produce)
     {
         var path = Path.Combine(Root, name);
         var hash = Data.Hash(inputs);
-        if (File.Exists(path))
+        var entry = await ReadEntry(path, hash);
+
+        if (entry is not null)
         {
-            try
+            logger.LogInformation(
+                "[{Chapter}][Storage][RESUME] Reusing {Stage}", Path.GetFileName(Root), name);
+
+            return entry.Content;
+        }
+
+        // Research may survive application fixes when the exact request and output hashes match.
+        // Never transfer drafts, review reports, approvals or checkpoints between run versions.
+        var reusableResearch = name == "cache/search.json"
+            || name.StartsWith("cache/source-", StringComparison.Ordinal);
+
+        if (reusableResearch)
+        {
+            foreach (var previousRoot in previousResearchRoots ?? [])
             {
-                var entry = Data.Read<Entry>(await File.ReadAllTextAsync(path));
-                if (entry.InputHash == hash && Data.Hash(entry.Content) == entry.OutputHash)
+                var previousPath = Path.Combine(previousRoot, name);
+                entry = await ReadEntry(previousPath, hash);
+
+                if (entry is null)
                 {
-                    logger.LogInformation("[{Chapter}][Storage][RESUME] Reusing {Stage}", Path.GetFileName(Root), name);
-                    return entry.Content;
+                    continue;
                 }
-            }
-            catch (System.Text.Json.JsonException)
-            {
+
+                await Data.SaveAsync(path, Data.Write(entry));
+                await Save(
+                    $"provenance/reused-{Path.GetFileName(name)}",
+                    Data.Write(new { previousPath, entry.InputHash, entry.OutputHash }));
+
+                logger.LogInformation(
+                    "[{Chapter}][Storage][RESUME] Reusing unchanged research {Stage} from previous run",
+                    Path.GetFileName(Root), name);
+
+                return entry.Content;
             }
         }
+
         var content = await produce();
         await Data.SaveAsync(path, Data.Write(new Entry(hash, Data.Hash(content), content)));
+
         return content;
     }
+
+    private static async Task<Entry?> ReadEntry(string path, string expectedHash)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var entry = Data.Read<Entry>(await File.ReadAllTextAsync(path));
+
+            return entry.InputHash == expectedHash && Data.Hash(entry.Content) == entry.OutputHash
+                ? entry
+                : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
 }
+
 public sealed class FileLogProvider(string path) : ILoggerProvider
 {
     private readonly object gate = new();
     private readonly string logPath = path;
+
     public ILogger CreateLogger(string categoryName) => new FileLogger(this);
+
     public void Dispose()
     {
     }
+
     private sealed class FileLogger(FileLogProvider owner) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
         public bool IsEnabled(LogLevel level) => level >= LogLevel.Information;
-        public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+
+        public void Log<TState>(
+            LogLevel level,
+            EventId id,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
         {
             if (!IsEnabled(level))
             {
@@ -51,7 +114,9 @@ public sealed class FileLogProvider(string path) : ILoggerProvider
 
             lock (owner.gate)
             {
-                File.AppendAllText(owner.logPath, $"{DateTimeOffset.UtcNow:O} {level} {formatter(state, exception)}{Environment.NewLine}");
+                File.AppendAllText(
+                    owner.logPath,
+                    $"{DateTimeOffset.UtcNow:O} {level} {formatter(state, exception)}{Environment.NewLine}");
             }
         }
     }

@@ -86,7 +86,7 @@ public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
         {
             foreach (var property in element.EnumerateObject())
             {
-                if (property.Name == "url" && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { } url)
+                if (property.Name.Equals("url", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString() is { } url)
                 {
                     urls.Add(url);
                 }
