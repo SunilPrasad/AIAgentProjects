@@ -17,16 +17,16 @@ public sealed class ModelGateway : IDisposable
     private readonly BookConfig config;
     private readonly string apiKey;
     private readonly ILogger log;
-    private readonly HttpClient http = new()
-    {
-        Timeout = TimeSpan.FromMinutes(4)
-    };
+    private readonly HttpClient http;
+    private readonly bool ownsHttpClient;
 
-    public ModelGateway(BookConfig config, string apiKey, ILogger log)
+    public ModelGateway(BookConfig config, string apiKey, ILogger log, HttpClient? httpClient = null)
     {
         this.config = config;
         this.apiKey = apiKey;
         this.log = log;
+        ownsHttpClient = httpClient is null;
+        http = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(4) };
     }
 
     public async Task<string> Agent(
@@ -45,10 +45,13 @@ public sealed class ModelGateway : IDisposable
             throw new ArgumentException("All model calls must use OpenRouter.", nameof(provider));
         }
 
-        var inputs = Data.Write(new { provider, model, instructions, prompt });
+        var contract = OutputContract.ForStage(stage);
+        var inputs = Data.Write(new { provider, model, instructions, prompt, contract });
 
         return await files.Cached($"cache/{stage}.json", inputs, async () =>
         {
+            var attemptPrompt = prompt;
+
             for (int attempt = 1; ; attempt++)
             {
                 log.LogInformation(
@@ -60,10 +63,19 @@ public sealed class ModelGateway : IDisposable
                     this, model, subject, name, files, requestStage);
 
                 AIAgent agent = adapter.AsAIAgent(instructions: instructions, name: name);
+                var runOptions = new ChatClientAgentRunOptions
+                {
+                    ChatOptions = new ChatOptions
+                    {
+                        ResponseFormat = contract is null
+                            ? null
+                            : ChatResponseFormat.ForJsonSchema(contract.Schema, contract.Name)
+                    }
+                };
 
                 try
                 {
-                    var response = await agent.RunAsync(prompt, cancellationToken: ct);
+                    var response = await agent.RunAsync(attemptPrompt, options: runOptions, cancellationToken: ct);
                     var text = response.Text;
 
                     if (string.IsNullOrWhiteSpace(text))
@@ -94,8 +106,14 @@ public sealed class ModelGateway : IDisposable
                     attempt < config.MaxAttempts && exception is JsonException or InvalidDataException)
                 {
                     log.LogWarning(
-                        "[{Chapter}][{Agent}][{Stage}] Invalid model output; retry {Attempt}",
-                        subject, name, stage, attempt);
+                        "[{Chapter}][{Agent}][{Stage}] {Reason}; retry {Attempt}",
+                        subject, name, stage, FailureDetails.Reason(exception), attempt);
+                    var correction = contract is null
+                        ? " Return the complete requested text, following the agent instructions."
+                        : " Return ONLY the required JSON object matching the supplied schema; no Markdown or prose introduction.";
+
+                    attemptPrompt = prompt + "\nOUTPUT CORRECTION: The previous response failed validation. " +
+                        FailureDetails.Reason(exception) + correction;
                 }
             }
         });
@@ -230,23 +248,14 @@ public sealed class ModelGateway : IDisposable
     private async Task<ChatResponse> Chat(
         string model,
         IEnumerable<ChatMessage> messages,
+        ChatOptions? options,
         string subject,
         string name,
         Artifacts files,
         string stage,
         CancellationToken ct)
     {
-        var body = new
-        {
-            model,
-            max_tokens = 6000,
-            stream = false,
-            messages = messages.Select(message => new
-            {
-                role = message.Role.Value,
-                content = message.Text
-            }).ToArray()
-        };
+        var body = BuildChatRequest(model, messages, options);
 
         await files.Save($"provenance/{stage}-request.json", Data.Write(new
         {
@@ -262,6 +271,64 @@ public sealed class ModelGateway : IDisposable
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, ReadText(response)));
     }
 
+    private static Dictionary<string, object> BuildChatRequest(
+        string model,
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options)
+    {
+        var conversation = messages.ToList();
+
+        // MAF supplies agent instructions in ChatOptions, not necessarily as a system message.
+        if (!string.IsNullOrWhiteSpace(options?.Instructions)
+            && !conversation.Any(message => message.Role == ChatRole.System
+                && message.Text == options.Instructions))
+        {
+            conversation.Insert(0, new ChatMessage(ChatRole.System, options.Instructions));
+        }
+
+        var body = new Dictionary<string, object>
+        {
+            ["model"] = model,
+            ["max_tokens"] = options?.MaxOutputTokens ?? 6000,
+            ["stream"] = false,
+            ["messages"] = conversation.Select(message => new
+            {
+                role = message.Role.Value,
+                content = message.Text
+            }).ToArray()
+        };
+
+        if (options?.ResponseFormat is ChatResponseFormatJson json)
+        {
+            body["response_format"] = json.Schema is { } schema
+                ? new
+                {
+                    type = "json_schema",
+                    json_schema = new
+                    {
+                        name = json.SchemaName ?? "structured_output",
+                        strict = true,
+                        schema
+                    }
+                }
+                : (object)new { type = "json_object" };
+
+            // Reject unsupported routes instead of silently ignoring the output contract.
+            body["provider"] = new { require_parameters = true };
+        }
+
+        if (options?.Temperature is { } temperature)
+        {
+            body["temperature"] = temperature;
+        }
+
+        if (options?.TopP is { } topP)
+        {
+            body["top_p"] = topP;
+        }
+
+        return body;
+    }
     private static JsonElement ReadChoice(JsonElement response)
     {
         if (!response.TryGetProperty("choices", out var choices)
@@ -380,7 +447,13 @@ public sealed class ModelGateway : IDisposable
         }
     }
 
-    public void Dispose() => http.Dispose();
+    public void Dispose()
+    {
+        if (ownsHttpClient)
+        {
+            http.Dispose();
+        }
+    }
 
     private sealed class OpenRouterChatClient(
         ModelGateway gateway,
@@ -394,7 +467,7 @@ public sealed class ModelGateway : IDisposable
             IEnumerable<ChatMessage> messages,
             ChatOptions? options = null,
             CancellationToken cancellationToken = default)
-            => gateway.Chat(model, messages, subject, name, files, stage, cancellationToken);
+            => gateway.Chat(model, messages, options, subject, name, files, stage, cancellationToken);
 
         public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages,

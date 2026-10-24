@@ -32,6 +32,7 @@ public static class FailureDetails
         return cause switch
         {
             EditorialException or InvalidDataException => cause.Message,
+            JsonException json => $"Invalid structured JSON at line {json.LineNumber}, byte {json.BytePositionInLine}.",
             HttpRequestException http when http.StatusCode.HasValue
                 => $"HTTP {(int)http.StatusCode.Value}: source or model request failed.",
             _ => cause.GetType().Name

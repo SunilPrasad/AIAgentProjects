@@ -27,6 +27,11 @@ The default configuration processes 12 personalities in order. For your first li
 - `researchModel`: `openai/gpt-4.1` (web research)
 - `reviewerModel`: `anthropic/claude-sonnet-4.5` (historical, cultural and book-wide review)
 
+Evidence ledgers and review reports use explicit strict JSON schemas. OpenRouter routes these
+requests only to endpoints that support the required response format; custom model choices must
+support structured outputs. The adapter forwards MAF agent instructions as system messages, so
+the Style Bible, task instructions and evidence rules reach each model.
+
 All roles use OpenRouter Chat Completions, including Claude. Keep writing and review model IDs
 different for model-independent review. Model availability depends on OpenRouter routing and your
 account. Existing direct-provider model IDs such as `claude-sonnet-4-5` must be updated to the
@@ -106,8 +111,12 @@ bounded text snapshot. Insufficient accessible evidence blocks a chapter instead
 Different domains alone do not prove editorial independence or scholarly reliability.
 
 The updated application was built successfully with .NET 10.0.103, with zero warnings/errors.
-No unit test project was created. No paid API calls or full end-to-end run were executed: the user
+No unit test project was created. No paid API calls or live end-to-end run were executed by Codex: the user
 will perform the live smoke run with an OpenRouter API key. An offline regression smoke check against a user-supplied saved search response verified source URL
 discovery, nested exception unwrapping and research cache reuse/invalidation. This did not make
-model calls. Recovery and remaining provider behaviour are implemented
+model calls. A further offline smoke check exercised real MAF agents through an in-memory HTTP
+handler, verified instruction/schema forwarding and corrective retries against saved invalid prose,
+then ran the full workflow graph to final Markdown, checkpoints, book review and a cache-only
+restart using fixture outputs. These checks validate application plumbing, not model quality or
+live OpenRouter schema enforcement. Recovery and remaining provider behaviour are implemented
 but remain to be verified during that run. See `REVIEW.md` for findings in the original prototype.
