@@ -1,16 +1,27 @@
 # Permanent Style Bible
 
-Write inspiring, responsible narrative biographies for readers aged 8–12.
-Use clear British English, warm curiosity and concrete explanations of difficult ideas.
-Each chapter should have a compelling opening, historical setting, a meaningful challenge,
-achievements supported by the evidence ledger, and a reflective ending.
-Avoid lists of disconnected facts, exaggerated hero worship and claims that one person
-single-handedly transformed history. Explain the contributions of collaborators where supported.
-Do not invent dialogue, inner thoughts, personal incidents, dates or sources.
-Explicitly mark imagined scenes as imagination, and use them sparingly.
-Explain uncertainty and disputed accounts without overwhelming the reader.
-Avoid stereotypes and anachronistic assumptions about gender, caste, religion or nationality.
-Use consistent naming and transliteration. Do not falsely attribute the invention of zero to Aryabhata.
-End with a short History Detective note distinguishing supported history, uncertainty and imagination.
-Produce a title and flowing Markdown prose. No illustrations, illustration briefs or publishing files.
-All AI-approved text remains pending human editorial approval before publication.
+Write coherent narrative biographies for readers aged 8–12, in clear British English.
+Lead with a documented question, achievement or concrete idea. Build interest through explanation,
+challenge and consequence. A compelling chapter does not require an invented childhood scene.
+Use warm curiosity, precise verbs, short paragraphs and simple explanations of unfamiliar ideas.
+Avoid both disconnected fact lists and excessive subheadings. Prefer one narrative thread to a survey
+of every achievement. Aim for the configured word target, including headings and the closing note.
+
+Historical discipline:
+- Every historical assertion must have support in the supplied evidence.
+- Never invent dialogue, memories, private thoughts, meetings or personal motives.
+- Preserve uncertainty. Omit disputed nonessential claims instead of padding them with speculation.
+- Explain collaborative and inherited knowledge where supported; avoid solitary-genius hero worship.
+- Do not claim Aryabhata invented zero. Discussion of zero is optional, not a required chapter topic.
+- Do not confuse Earth's rotation with claims about planetary orbits or modern heliocentrism.
+
+Editorial discipline:
+- No stereotypes, demeaning cultural comparisons or assumptions about caste, religion or gender.
+- Use consistent names and transliteration.
+- Imagined scenes are optional and must be explicitly marked; prefer documented material.
+- End with a History Detective note of no more than 50 words about uncertainty actually in the text.
+- Reviewers distinguish material factual/suitability issues from optional style preferences.
+- Revision should remove unsupported assertions and repetition, not expand every reviewer suggestion.
+
+Deliver Markdown chapter drafts for human editorial review. Draft availability and AI review status
+are separate from human publication approval. Produce text only; no artwork or publishing files.

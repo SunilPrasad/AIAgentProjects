@@ -55,15 +55,19 @@ public sealed record Review([property: JsonRequired] bool Approved, [property: J
     {
         if (Findings is null || string.IsNullOrWhiteSpace(Summary) || Findings.Any(f => f is null
             || string.IsNullOrWhiteSpace(f.ClaimId) || string.IsNullOrWhiteSpace(f.Issue) || string.IsNullOrWhiteSpace(f.RecommendedFix)
-            || !new[] { "critical", "major", "minor" }.Contains(f.Severity)) || (Approved && Findings.Count != 0))
+            || !new[] { "critical", "major", "minor" }.Contains(f.Severity)) || (Approved && Findings.Any(finding => finding.Severity is "critical" or "major")))
         {
             throw new InvalidDataException("Invalid or inconsistent review; approval withheld.");
         }
     }
 }
 public sealed record ChapterState(string Subject, List<Source> Sources, Evidence? Ledger = null,
-    string Outline = "", string Draft = "", int Pass = 0, List<Review>? Reviews = null, bool Approved = false);
-public sealed record ChapterResult(string Subject, string Status, string Directory, string? ContentHash, string Reason);
+    string Outline = "", string Draft = "", int Pass = 0, List<Review>? Reviews = null, bool Approved = false,
+    List<ReviewerFailure>? ReviewFailures = null, List<ChapterCandidate>? Candidates = null);
+public sealed record ChapterResult(
+    string Subject, string Status, string Directory, string? ContentHash, string Reason,
+    string? ChapterPath = null, string? ReviewPath = null, int? SelectedPass = null,
+    bool IsFinalGenerated = false, bool PublicationApproved = false);
 public sealed class EditorialException(string message) : Exception(message);
 
 public static class Data

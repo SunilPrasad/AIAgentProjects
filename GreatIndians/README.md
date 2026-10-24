@@ -1,128 +1,141 @@
-# Great Indians — automatic text-only book pipeline
+# Great Indians — automatic chapter writing
 
-.NET 10 console application using Microsoft Agent Framework agents, typed workflow executors,
-conditional review/revision edges and local framework checkpoints. All model calls go through
-OpenRouter using one API key. Azure AI Foundry and direct OpenAI/Anthropic keys are not required.
+.NET 10 console application using real Microsoft Agent Framework agents and workflow executors,
+OpenRouter, durable stage caches and local framework checkpoints. The product is an engaging,
+evidence-backed chapter for readers aged 8–12. Generation completion and editorial approval are
+recorded separately: an unresolved review no longer hides a chapter that has already been written.
+
+## Read an example now
+
+[**Aryabhata and the Sky That Would Not Stand Still**](examples/aryabhata.chapter.md) is a
+776-word editorial example created from the retained source evidence. It demonstrates the revised
+curiosity-led writing approach. It is not presented as an automatic pipeline run or an independently
+approved chapter. [Editorial/source notes](examples/aryabhata.chapter-notes.md) accompany it.
 
 ## Run
 
-From this repository's `GreatIndians/GreatIndians.Factory` directory:
+From `GreatIndians/GreatIndians.Factory`:
 
 ```powershell
 $env:OPENROUTER_API_KEY = "your OpenRouter API key"
 dotnet run
 ```
 
-Edit `book.json` to choose personalities, models, word limits and source requirements.
-Edit `style-bible.md` to change the permanent editorial style. These files are loaded automatically.
-An optional first argument selects a different configuration file: `dotnet run -- C:\path\book.json`.
-The Style Bible and output paths are relative to that configuration file. Running from the project
-folder uses its source `book.json`; the built executable falls back to the copied configuration.
-Keys belong in environment variables, never configuration or source control.
+The application loads `book.json` and `style-bible.md` automatically. The supplied book has 12
+personalities; reduce the list to one for the first live run. An optional configuration path is
+supported: `dotnet run -- C:\path\book.json`. Style and output paths are relative to that file.
+Running from the project folder uses its source configuration, with the built copy as a fallback.
+Keys belong in environment variables, not source control. No Azure or direct provider keys are needed.
 
-The default configuration processes 12 personalities in order. For your first live run, reduce
-`personalities` to one entry. Use OpenRouter model IDs (including the author prefix):
+OpenRouter model defaults:
 
-- `writerModel`: `openai/gpt-4.1` (ledger, planning, writing, revision, narrative review)
-- `researchModel`: `openai/gpt-4.1` (web research)
-- `reviewerModel`: `anthropic/claude-sonnet-4.5` (historical, cultural and book-wide review)
+- `writerModel`: `openai/gpt-4.1` — evidence selection, planning, writing, revision and narrative review
+- `researchModel`: `openai/gpt-4.1` — web research
+- `reviewerModel`: `anthropic/claude-sonnet-4.5` — historical, cultural and book-wide review
 
-Evidence ledgers and review reports use explicit strict JSON schemas. OpenRouter routes these
-requests only to endpoints that support the required response format; custom model choices must
-support structured outputs. The adapter forwards MAF agent instructions as system messages, so
-the Style Bible, task instructions and evidence rules reach each model.
+Model IDs include the author prefix. Ledger/review models must support JSON-schema outputs;
+OpenRouter routing requires the response-format parameter instead of silently ignoring it.
+Research uses `openrouter:web_search` with the Exa engine and bounded searches, billed through
+OpenRouter. A separate Exa key is not required. Source candidates come from structured citations,
+not URLs invented in prose. See [OpenRouter Chat Completions](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion)
+and [web search](https://openrouter.ai/docs/guides/features/server-tools/web-search). Tool APIs can change;
+the user performs live provider verification with their own credits.
 
-All roles use OpenRouter Chat Completions, including Claude. Keep writing and review model IDs
-different for model-independent review. Model availability depends on OpenRouter routing and your
-account. Existing direct-provider model IDs such as `claude-sonnet-4-5` must be updated to the
-OpenRouter IDs above when bringing over an older configuration.
+## Where the chapter is saved
 
-Research uses OpenRouter's `openrouter:web_search` server tool with the Exa engine, bounded search
-calls and optional domain filters. Search is billed through OpenRouter, with no separate Exa key.
-It requires structured `url_citation` annotations from the search response before retrieving sources;
-URLs merely mentioned by a model are not accepted. Search/tool unavailability or missing citations
-blocks drafting for that chapter. The application still downloads each cited source separately and
-validates ledger excerpts against the retained source text.
+The obvious reading location is:
 
-API reference: [Chat Completions](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion),
-[web-search server tool](https://openrouter.ai/docs/guides/features/server-tools/web-search).
-The search-tool API is currently beta. OpenRouter credits are required for model and search calls.
+```text
+GreatIndians/output/
+  index.md
+  chapters/
+    01-aryabhata.md
+    01-aryabhata-review.md
+    01-aryabhata.status.json
+    02-brahmagupta.md
+    ...
+```
 
-## What one execution does
+The chapter file contains clean reading text. Its report carries findings, reviewer availability,
+word count, selected pass, provenance and human approval status. Files appear as soon as a first
+draft exists and are updated to the selected chapter after review. The console prints their paths.
+The detailed book/run archive also contains `final.md` after chapter generation finishes, even when
+review findings remain. Here **final means the selected output of this bounded generation run**;
+it does not mean approved for publication. `IsFinalGenerated` and `PublicationApproved` are separate
+status fields; publication approval stays false.
 
-1. Loads book configuration and Style Bible, then validates that the OpenRouter API key is present.
-2. Searches the live web for each personality and downloads accessible public HTTPS HTML/text sources.
-3. Saves source text snapshots, URLs, retrieval times and SHA-256 hashes.
-4. Indexes exact source excerpts with IDs and character offsets. The model selects excerpt IDs
-   for each claim; code attaches the original saved text instead of asking the model to transcribe it.
-   Validates every binding, source hash and excerpt, requiring at least two source domains. Invalid
-   selections receive automatic repair feedback for up to `maxAttempts`, then remain BLOCKED.
-5. Creates an outline and a first Markdown chapter draft using real MAF AIAgents.
-6. Runs historical, children's narrative and cultural sensitivity review agents concurrently.
-7. Applies a deterministic word-count check. All reviewers must explicitly approve with no findings.
-8. Routes rejected chapters through the MAF revision/review loop, up to the configured pass limit.
-9. Saves AI-approved chapters as `final.md`, always pending human publication approval.
-10. Marks unresolved historical/editorial issues BLOCKED; technical failures are recorded separately.
-    Both allow the next personality to proceed.
-11. Reviews the approved chapters together for book-wide editorial consistency and saves a summary.
-    Book-wide findings remain visible and keep the book from passing its overall AI gate.
+To recover existing drafts without any model calls or an API key:
 
-No images, illustration briefs, PDF, EPUB or publishing files are generated.
+```powershell
+dotnet run -- --export-existing
+```
 
-## Recovery and outputs
+This selects a reviewed candidate from saved run artifacts and exports it with its outstanding
+findings. It never transfers old approval or changes the original archived review records. Exporting
+updates the reading copy, so keep any manual edits separately before exporting or generating again.
 
-The output tree is organised by book, input/application version and chapter. `current-run.json`
-points to the current version. All earlier version directories are retained. Each chapter stores:
+## Approach and prompts
 
-- `research/`: search response, sources, indexed exact excerpts, ledger selections, validation
-  findings, source-offset bindings and the final evidence ledger
-- `outline.md` and `drafts/`: planning and all editorial draft versions
-- `reviews/`: individual reviews and quality gates bound to the reviewed draft hash
-- `revisions/`: before/after hashes and findings used for revision
-- `provenance/`: actual prompts, model identifiers and raw provider responses (no API keys)
-- `checkpoints/`: Microsoft Agent Framework filesystem checkpoints
-- `cache/`: input/output-hashed successful stage results
-- `status.json`, `failure-details.json` when a chapter fails, and, only on approval, `final.md`
+All role prompts are centralised and versioned in `PromptSet.cs`. The permanent Style Bible is a
+separate editable document. The framework adapter forwards agent instructions as system messages.
 
-Console messages reflect actual workflow activity. `execution.log` also retains those events;
-raw responses contain provider token usage. Reported OpenRouter cost is logged when supplied;
-otherwise cost is explicitly reported as unavailable rather than guessed. Provider error bodies and API keys are excluded from logs.
-Prompts and source snapshots contain book/research content; treat the output folder accordingly.
+1. Search and retrieve sources. Save URLs, text snapshots, timestamps and hashes.
+2. Index exact source excerpts. Let the model select excerpt IDs; code attaches the saved text and
+   verifies offsets, hashes, claim IDs and source diversity. Invalid selections receive bounded repair.
+3. Plan one narrative thread around 5–7 supported beats rather than catalogue every achievement.
+4. Write near the middle of the configured range (750 words by default). Use a curiosity-building
+   opening, concrete explanations, a beginning/middle/ending and a short History Detective note.
+5. Deliver the first reading copy immediately. The chapter remains available during later stages.
+6. Review concurrently: history checks support/certainty; narrative checks engagement and reading
+   level; cultural review checks harmful framing. No role has a quota for findings.
+7. Revise concrete material issues. Remove weak optional claims instead of adding speculative
+   paragraphs. Supply the actual word count and target. Keep the best reviewed candidate so an
+   unsuccessful revision cannot replace a better chapter.
+8. Finish after the configured review limit or a reviewer outage. Save the selected `final.md`,
+   export the clean chapter and retain unresolved findings. Optional minor notes do not veto delivery
+   or mandatory AI checks. Critical/major issues prevent AI approval, not access to the draft.
+9. Review all produced chapters together and save a book summary, including chapters needing review.
 
-On restart, intact in-progress chapters restore their MAF checkpoint. If artifacts changed, or a
-chapter previously completed/failed, the graph re-enters through the application stage cache and
-revalidates its results. Completed successful calls with identical inputs do not repeat. Changes to
-configuration, Style Bible or compiled application invalidate the run namespace conservatively.
-Unchanged research search/source caches can be imported from earlier runs of the same chapter when
-both exact request and content hashes match. Imported provenance points to the retained original
-artifacts. Drafts, approvals and checkpoints are never imported across run versions.
-Changing a draft never transfers its earlier review approval to the changed text. Interrupted calls
-that did not durably save a successful result can repeat. Failed requests have bounded exponential
-backoff; 429/5xx/timeouts are distinguished from editorial rejection. Ctrl+C saves completed stages.
-Only one process can use an output directory at a time.
+Technical API failures are recorded separately from editorial rejection. Existing chapters survive
+review/revision outages. Research that cannot establish genuine source evidence still stops before
+writing; the program does not fabricate history to guarantee a narrative under every failure mode.
 
-Exit codes: `0` all chapter and book AI gates passed (human approval still pending); `2` completed
-with blocked chapters, technical failures or book findings; `1` startup/unhandled failure; `130` cancelled.
+Statuses include `AI_APPROVED_PENDING_HUMAN`, `CHAPTER_READY_NEEDS_REVIEW`,
+`CHAPTER_READY_REVIEW_INCOMPLETE`, `BLOCKED_RESEARCH` and `FAILED_BEFORE_DRAFT`. Intermediate
+reading copies may show `DRAFT_REVIEW_PENDING`. Exit `0` means every requested chapter was produced;
+check the reports for editorial status. Exit `2` means some chapters were unavailable, `1` a startup
+failure, and `130` cancellation. Human publication approval is always separate.
 
-## Practical limits and verification
+## Persistence, cost and limitations
 
-Exact excerpt matching verifies provenance, not historical truth. Independent reviewers assess
-whether claims follow from excerpts, but human editorial approval remains necessary before publication.
-The source downloader supports HTML/text, not PDFs, paywalls or JavaScript-only pages, and retains a
-bounded text snapshot. Insufficient accessible evidence blocks a chapter instead of inventing support.
-`allowedSourceDomains` optionally restricts discovery and retrieval; an empty list searches broadly.
-Different domains alone do not prove editorial independence or scholarly reliability.
+The book/run archive retains sources, excerpt bindings, outline, every draft, reviews tied to draft
+hashes, revision provenance, selected candidate, framework checkpoints, prompts and raw responses.
+`current-run.json` points to the latest run. `execution.log` records real events; usage logs include
+OpenRouter-reported cost when present. API keys and upstream error bodies are excluded from logs.
+Output files contain book/research content and should be treated accordingly.
 
-The updated application was built successfully with .NET 10.0.103, with zero warnings/errors.
-No unit test project was created. No paid API calls or live end-to-end run were executed by Codex: the user
-will perform the live smoke run with an OpenRouter API key. An offline regression smoke check against a user-supplied saved search response verified source URL
-discovery, nested exception unwrapping and research cache reuse/invalidation. This did not make
-model calls. A further offline smoke check exercised real MAF agents through an in-memory HTTP
-handler, verified instruction/schema forwarding and corrective retries against saved invalid prose,
-then ran the full workflow graph to final Markdown, checkpoints, book review and a cache-only
-restart using fixture outputs. These checks validate application plumbing, not model quality or
-live OpenRouter schema enforcement. Saved-source diagnostics also reproduced the C2 excerpt
-mismatch, checked exact-text/offset binding (including source annotation markers), rejected modified
-excerpts and verified bounded evidence-repair failure. The full offline workflow verified automatic
-repair of an invalid excerpt selection before proceeding to final Markdown. Recovery and remaining provider behaviour are implemented
-but remain to be verified during that run. See `REVIEW.md` for findings in the original prototype.
+On restart, intact checkpoints can resume; otherwise stages reuse successful cached results. Results
+can be imported across application versions only when exact request and output hashes match. New
+prompts, Style Bible or content invalidate affected calls. Cached review data is revalidated and
+rebound to the same draft; approval metadata and checkpoints are never imported across run versions.
+Interrupted unsaved calls may repeat. One process at a time may use an output folder.
+
+HTML/text source retrieval is supported, not PDFs, paywalls or JavaScript-only content. Retained
+text is bounded. Exact excerpts establish provenance, not historical truth; model and human review
+remain important. Model endpoints, schema support and account availability require live verification.
+Reviewers receive focused context to limit cost and contradictory rewrites. Real OpenRouter
+integration failures from the user's runs were diagnosed from saved responses, not concealed.
+
+## Verification
+
+The updated code builds with .NET 10, zero warnings/errors. No unit-test project was added. Offline
+smoke harnesses outside the repository use real MAF agents/workflows with in-memory HTTP responses.
+They verified instruction/schema forwarding, source/excerpt binding, bounded evidence repair,
+checkpoint creation and completed-run cache recovery.
+
+The redesigned delivery workflow was exercised across seven offline scenarios: approved chapter,
+unresolved major findings, reviewer outage, failed revision, word-count correction, worsening
+revision (the better candidate wins), and minor-only notes. All produced final chapter files with
+honest approval status. Archive export was also checked for zero model calls and unchanged original
+review records. These fixtures verify orchestration and delivery, not the quality of live model text.
+No paid API calls were made by Codex. The user will verify live writing with their chosen models.

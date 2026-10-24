@@ -25,10 +25,9 @@ public sealed class Artifacts(string root, ILogger logger, string[]? previousRes
             return entry.Content;
         }
 
-        // Research may survive application fixes when the exact request and output hashes match.
-        // Never transfer drafts, review reports, approvals or checkpoints between run versions.
-        var reusableResearch = name == "cache/search.json"
-            || name.StartsWith("cache/source-", StringComparison.Ordinal);
+        // A successful model result may survive application fixes only when its exact inputs and output hash match.
+        // Revalidate all reused results; approvals and checkpoints are never transferred between run versions.
+        var reusableResearch = name.StartsWith("cache/", StringComparison.Ordinal);
 
         if (reusableResearch)
         {
@@ -48,7 +47,7 @@ public sealed class Artifacts(string root, ILogger logger, string[]? previousRes
                     Data.Write(new { previousPath, entry.InputHash, entry.OutputHash }));
 
                 logger.LogInformation(
-                    "[{Chapter}][Storage][RESUME] Reusing unchanged research {Stage} from previous run",
+                    "[{Chapter}][Storage][RESUME] Reusing identical stage inputs for {Stage} from previous run",
                     Path.GetFileName(Root), name);
 
                 return entry.Content;

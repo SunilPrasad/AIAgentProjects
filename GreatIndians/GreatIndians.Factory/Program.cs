@@ -11,11 +11,13 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 try
 {
+    bool exportExisting = args.FirstOrDefault() == "--export-existing";
+    var configArguments = exportExisting ? args.Skip(1).ToArray() : args;
     string configFile;
 
-    if (args.Length > 0)
+    if (configArguments.Length > 0)
     {
-        configFile = args[0];
+        configFile = configArguments[0];
     }
     else if (File.Exists("book.json"))
     {
@@ -71,6 +73,13 @@ try
         "[BOOK][Startup][LOAD] {Title}; {Count} chapters; automatic mode; Style Bible loaded",
         config.BookTitle,
         config.Personalities.Count);
+
+    if (exportExisting)
+    {
+        Environment.ExitCode = await BookArchive.ExportExistingAsync(
+            config, outputDirectory, logger, cancellation.Token);
+        return;
+    }
 
     var openRouterKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
 
