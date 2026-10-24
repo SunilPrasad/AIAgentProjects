@@ -17,8 +17,7 @@
   "maxSources": 6,
   "allowedSourceDomains": [],
   "personalities": [
-    "Aryabhata", "Brahmagupta", "Chanakya", "Chandragupta Maurya", "Ashoka",
-    "Swami Vivekananda", "Rani Lakshmibai", "Savitribai Phule",
-    "Srinivasa Ramanujan", "C. V. Raman", "B. R. Ambedkar", "A. P. J. Abdul Kalam"
+    "Aryabhata",
+    "Brahmagupta"
   ]
 }
