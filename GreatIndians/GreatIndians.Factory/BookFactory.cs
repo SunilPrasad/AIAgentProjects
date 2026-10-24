@@ -81,7 +81,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             try
             {
                 var bookFiles = new Artifacts(Path.Combine(root, "book-review"), log);
-                var report = await api.Agent("BOOK", "BookEditorialReviewer", "anthropic", config.ReviewerModel,
+                var report = await api.Agent("BOOK", "BookEditorialReviewer", "openrouter", config.ReviewerModel,
                     Common + "\nYou are an independent book editor. Check cross-chapter consistency in chronology, names, tone, reading age, repeated claims, terminology and representation. " + ReviewSchema,
                     Data.Write(new
                     {
@@ -136,7 +136,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         var research = new Stage("research", async (state, token) =>
         {
             var sources = await researcher.Gather(subject, files, token);
-            var ledgerJson = await api.Agent(subject, "EvidenceLedgerAgent", "openai", config.WriterModel, Common +
+            var ledgerJson = await api.Agent(subject, "EvidenceLedgerAgent", "openrouter", config.WriterModel, Common +
                 $"\nExtract at least {config.MinClaims} useful historical claims from these retained sources. Include life chronology, context and achievements. " +
                 "Each quote MUST be an exact contiguous excerpt from the source Text, at least 30 characters, with whitespace normalised. " +
                 "Use multiple independent domains. Do not turn disputed assertions into certainty. Return ONLY JSON {\"claims\":[{\"id\":\"C1\",\"text\":string,\"sourceId\":\"S1\",\"quote\":string}]}. All fields mandatory.",
@@ -157,7 +157,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         });
         var outline = new Stage("outline", async (state, token) =>
         {
-            var text = await api.Agent(subject, "StoryPlanningAgent", "openai", config.WriterModel, Common +
+            var text = await api.Agent(subject, "StoryPlanningAgent", "openrouter", config.WriterModel, Common +
                 "\nCreate an engaging narrative outline with a hook, historical setting, challenge, achievement and reflective ending. Map planned factual assertions to evidence claim IDs. Do not add facts beyond the ledger.",
                 Context(state), files, "outline", token);
             await files.Save("outline.md", text);
@@ -168,7 +168,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         });
         var writer = new Stage("writer", async (state, token) =>
         {
-            var text = await api.Agent(subject, "ChapterWritingAgent", "openai", config.WriterModel, Common +
+            var text = await api.Agent(subject, "ChapterWritingAgent", "openrouter", config.WriterModel, Common +
                 "\nWrite the complete engaging chapter as clean Markdown, with a title and flowing story, not a fact sheet. Use ONLY evidence-ledger facts. End with a short History Detective note identifying uncertainty and any explicitly signalled imagination. No invented dialogue. Return only the chapter.",
                 Context(state) + "\nOUTLINE:\n" + state.Outline, files, "draft-1", token);
             await files.Save("drafts/draft-1.md", text);
@@ -182,9 +182,9 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             int pass = state.Pass + 1;
             var roles = new[]
             {
-                (Name: "HistoricalReviewer", Provider: "anthropic", Model: config.ReviewerModel, Focus: "Audit EVERY factual assertion against the ledger AND retained source text. Check that ledger claims actually follow from their excerpts, dates, disputed claims and misattributed achievements. Reject unsupported assertions, fabricated quotations and unchecked firsts."),
-                (Name: "ChildrensNarrativeReviewer", Provider: "openai", Model: config.WriterModel, Focus: "Independently review reading age, narrative momentum, clarity, word count, British English and Style Bible compliance. Reject fact-sheet writing and inappropriate content."),
-                (Name: "CulturalSensitivityReviewer", Provider: "anthropic", Model: config.ReviewerModel, Focus: "Independently review stereotypes, caste, religion, gender, cultural context, anachronisms and misleading certainty. Flag triumphalist or exclusionary narratives and evidence-free assumptions.")
+                (Name: "HistoricalReviewer", Provider: "openrouter", Model: config.ReviewerModel, Focus: "Audit EVERY factual assertion against the ledger AND retained source text. Check that ledger claims actually follow from their excerpts, dates, disputed claims and misattributed achievements. Reject unsupported assertions, fabricated quotations and unchecked firsts."),
+                (Name: "ChildrensNarrativeReviewer", Provider: "openrouter", Model: config.WriterModel, Focus: "Independently review reading age, narrative momentum, clarity, word count, British English and Style Bible compliance. Reject fact-sheet writing and inappropriate content."),
+                (Name: "CulturalSensitivityReviewer", Provider: "openrouter", Model: config.ReviewerModel, Focus: "Independently review stereotypes, caste, religion, gender, cultural context, anachronisms and misleading certainty. Flag triumphalist or exclusionary narratives and evidence-free assumptions.")
             };
             var reports = await Task.WhenAll(roles.Select(async role =>
             {
@@ -227,7 +227,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         });
         var reviser = new Stage("reviser", async (state, token) =>
         {
-            var text = await api.Agent(subject, "RevisionAgent", "openai", config.WriterModel, Common +
+            var text = await api.Agent(subject, "RevisionAgent", "openrouter", config.WriterModel, Common +
                 "\nRevise the complete chapter to resolve ALL review findings. Remove unsupported assertions instead of inventing support. Retain narrative energy. Return only the complete clean Markdown chapter.",
                 Context(state) + "\nCURRENT CHAPTER:\n" + state.Draft + "\nFINDINGS:\n" + Data.Write(state.Reviews), files, $"draft-{state.Pass + 1}", token);
             await files.Save($"drafts/draft-{state.Pass + 1}.md", text);

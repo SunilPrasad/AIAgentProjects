@@ -1,16 +1,15 @@
 # Great Indians — automatic text-only book pipeline
 
 .NET 10 console application using Microsoft Agent Framework agents, typed workflow executors,
-conditional review/revision edges and local framework checkpoints. OpenAI and Anthropic are
-called directly using their public APIs. Azure AI Foundry is not used or required.
+conditional review/revision edges and local framework checkpoints. All model calls go through
+OpenRouter using one API key. Azure AI Foundry and direct OpenAI/Anthropic keys are not required.
 
 ## Run
 
 From this repository's `GreatIndians/GreatIndians.Factory` directory:
 
 ```powershell
-$env:OPENAI_API_KEY = "your OpenAI API key"
-$env:ANTHROPIC_API_KEY = "your Anthropic API key"
+$env:OPENROUTER_API_KEY = "your OpenRouter API key"
 dotnet run
 ```
 
@@ -22,15 +21,31 @@ folder uses its source `book.json`; the built executable falls back to the copie
 Keys belong in environment variables, never configuration or source control.
 
 The default configuration processes 12 personalities in order. For your first live run, reduce
-`personalities` to one entry. Model IDs must be available to your API accounts; change them in
-`book.json` if necessary. Research uses OpenAI Responses API hosted `web_search`, which has
-additional tool charges. Writer/planner/reviser and narrative reviewer use OpenAI Chat Completions;
-history, cultural sensitivity and book-wide reviewers use Anthropic Messages. Account credits for
-both providers are required. A consumer chat subscription does not supply these API credits.
+`personalities` to one entry. Use OpenRouter model IDs (including the author prefix):
+
+- `writerModel`: `openai/gpt-4.1` (ledger, planning, writing, revision, narrative review)
+- `researchModel`: `openai/gpt-4.1` (web research)
+- `reviewerModel`: `anthropic/claude-sonnet-4.5` (historical, cultural and book-wide review)
+
+All roles use OpenRouter Chat Completions, including Claude. Keep writing and review model IDs
+different for model-independent review. Model availability depends on OpenRouter routing and your
+account. Existing direct-provider model IDs such as `claude-sonnet-4-5` must be updated to the
+OpenRouter IDs above when bringing over an older configuration.
+
+Research uses OpenRouter's `openrouter:web_search` server tool with the Exa engine, bounded search
+calls and optional domain filters. Search is billed through OpenRouter, with no separate Exa key.
+It requires structured `url_citation` annotations from the search response before retrieving sources;
+URLs merely mentioned by a model are not accepted. Search/tool unavailability or missing citations
+blocks drafting for that chapter. The application still downloads each cited source separately and
+validates ledger excerpts against the retained source text.
+
+API reference: [Chat Completions](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion),
+[web-search server tool](https://openrouter.ai/docs/guides/features/server-tools/web-search).
+The search-tool API is currently beta. OpenRouter credits are required for model and search calls.
 
 ## What one execution does
 
-1. Loads book configuration and Style Bible, then validates both API keys are present.
+1. Loads book configuration and Style Bible, then validates that the OpenRouter API key is present.
 2. Searches the live web for each personality and downloads accessible public HTTPS HTML/text sources.
 3. Saves source text snapshots, URLs, retrieval times and SHA-256 hashes.
 4. Builds a structured evidence ledger. Rejects claims whose exact excerpts are absent from saved
@@ -62,8 +77,8 @@ points to the current version. All earlier version directories are retained. Eac
 - `status.json` and, only on approval, `final.md`
 
 Console messages reflect actual workflow activity. `execution.log` also retains those events;
-raw responses contain provider token usage. Prices are not hardcoded: cost is explicitly reported
-as unavailable rather than guessed. Provider error bodies and API keys are excluded from logs.
+raw responses contain provider token usage. Reported OpenRouter cost is logged when supplied;
+otherwise cost is explicitly reported as unavailable rather than guessed. Provider error bodies and API keys are excluded from logs.
 Prompts and source snapshots contain book/research content; treat the output folder accordingly.
 
 On restart, intact in-progress chapters restore their MAF checkpoint. If artifacts changed, or a
@@ -89,5 +104,5 @@ Different domains alone do not prove editorial independence or scholarly reliabi
 
 The updated application was built successfully with .NET 10.0.103, with zero warnings/errors.
 No unit test project was created. No paid API calls or full end-to-end run were executed: the user
-will perform the live smoke run with both API keys. Recovery and provider behaviour are implemented
+will perform the live smoke run with an OpenRouter API key. Recovery and provider behaviour are implemented
 but remain to be verified during that run. See `REVIEW.md` for findings in the original prototype.

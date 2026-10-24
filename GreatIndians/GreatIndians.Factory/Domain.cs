@@ -17,9 +17,9 @@ public sealed record BookConfig
     public List<string> Personalities { get; init; } = [];
     public string StyleBible { get; init; } = "style-bible.md";
     public string OutputDirectory { get; init; } = "output";
-    public string WriterModel { get; init; } = "gpt-4.1";
-    public string ResearchModel { get; init; } = "gpt-4.1";
-    public string ReviewerModel { get; init; } = "claude-sonnet-4-5";
+    public string WriterModel { get; init; } = "openai/gpt-4.1";
+    public string ResearchModel { get; init; } = "openai/gpt-4.1";
+    public string ReviewerModel { get; init; } = "anthropic/claude-sonnet-4.5";
     public int MaxReviewPasses { get; init; } = 3;
     public int MaxAttempts { get; init; } = 3;
     public int MinSources { get; init; } = 2;
@@ -35,9 +35,10 @@ public sealed record BookConfig
             || ChapterWordCountMax < ChapterWordCountMin || MaxReviewPasses is < 1 or > 10 || MaxAttempts is < 1 or > 5
             || MinSources < 2 || MaxSources < MinSources || MaxSources > 10 || MinClaims < 1
             || MaxSourceCharacters is < 1000 or > 50000 || AllowedSourceDomains is null
-            || new[] { WriterModel, ResearchModel, ReviewerModel, StyleBible, OutputDirectory }.Any(string.IsNullOrWhiteSpace))
+            || new[] { WriterModel, ResearchModel, ReviewerModel, StyleBible, OutputDirectory }.Any(string.IsNullOrWhiteSpace)
+            || new[] { WriterModel, ResearchModel, ReviewerModel }.Any(model => !model.Contains('/') || model.Any(char.IsWhiteSpace)))
         {
-            throw new InvalidDataException("Invalid book configuration. Check personalities, models, bounds and retry limits.");
+            throw new InvalidDataException("Invalid book configuration. Check personalities, OpenRouter model IDs (author/model), bounds and retry limits.");
         }
     }
 }

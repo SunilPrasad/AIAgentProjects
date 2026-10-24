@@ -72,16 +72,15 @@ try
         config.BookTitle,
         config.Personalities.Count);
 
-    var openaiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-    var anthropicKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+    var openRouterKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
 
-    if (string.IsNullOrWhiteSpace(openaiKey) || string.IsNullOrWhiteSpace(anthropicKey))
+    if (string.IsNullOrWhiteSpace(openRouterKey))
     {
         throw new InvalidOperationException(
-            "Set OPENAI_API_KEY and ANTHROPIC_API_KEY before running. No Azure account is required.");
+            "Set OPENROUTER_API_KEY before running. Direct OpenAI/Anthropic keys and Azure are not required.");
     }
 
-    using var api = new ModelGateway(config, openaiKey, anthropicKey, logger);
+    using var api = new ModelGateway(config, openRouterKey, logger);
     var factory = new BookFactory(config, style, outputDirectory, api, logger);
 
     Environment.ExitCode = await factory.RunAsync(cancellation.Token);
