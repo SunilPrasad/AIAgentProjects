@@ -21,7 +21,9 @@ public sealed class Artifacts(string root, ILogger logger)
                     return entry.Content;
                 }
             }
-            catch (System.Text.Json.JsonException) { }
+            catch (System.Text.Json.JsonException)
+            {
+            }
         }
         var content = await produce();
         await Data.SaveAsync(path, Data.Write(new Entry(hash, Data.Hash(content), content)));
@@ -33,15 +35,24 @@ public sealed class FileLogProvider(string path) : ILoggerProvider
     private readonly object gate = new();
     private readonly string logPath = path;
     public ILogger CreateLogger(string categoryName) => new FileLogger(this);
-    public void Dispose() { }
+    public void Dispose()
+    {
+    }
     private sealed class FileLogger(FileLogProvider owner) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel level) => level >= LogLevel.Information;
         public void Log<TState>(LogLevel level, EventId id, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (!IsEnabled(level)) return;
-            lock (owner.gate) File.AppendAllText(owner.logPath, $"{DateTimeOffset.UtcNow:O} {level} {formatter(state, exception)}{Environment.NewLine}");
+            if (!IsEnabled(level))
+            {
+                return;
+            }
+
+            lock (owner.gate)
+            {
+                File.AppendAllText(owner.logPath, $"{DateTimeOffset.UtcNow:O} {level} {formatter(state, exception)}{Environment.NewLine}");
+            }
         }
     }
 }

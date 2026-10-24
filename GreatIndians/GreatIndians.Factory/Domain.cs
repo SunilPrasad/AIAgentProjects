@@ -36,7 +36,9 @@ public sealed record BookConfig
             || MinSources < 2 || MaxSources < MinSources || MaxSources > 10 || MinClaims < 1
             || MaxSourceCharacters is < 1000 or > 50000 || AllowedSourceDomains is null
             || new[] { WriterModel, ResearchModel, ReviewerModel, StyleBible, OutputDirectory }.Any(string.IsNullOrWhiteSpace))
+        {
             throw new InvalidDataException("Invalid book configuration. Check personalities, models, bounds and retry limits.");
+        }
     }
 }
 public sealed record Source(string Id, string Url, string Title, string Text, string Sha256, DateTimeOffset RetrievedAt);
@@ -53,7 +55,9 @@ public sealed record Review([property: JsonRequired] bool Approved, [property: J
         if (Findings is null || string.IsNullOrWhiteSpace(Summary) || Findings.Any(f => f is null
             || string.IsNullOrWhiteSpace(f.ClaimId) || string.IsNullOrWhiteSpace(f.Issue) || string.IsNullOrWhiteSpace(f.RecommendedFix)
             || !new[] { "critical", "major", "minor" }.Contains(f.Severity)) || (Approved && Findings.Count != 0))
+        {
             throw new InvalidDataException("Invalid or inconsistent review; approval withheld.");
+        }
     }
 }
 public sealed record ChapterState(string Subject, List<Source> Sources, Evidence? Ledger = null,
@@ -75,11 +79,19 @@ public static class Data
         if (value.StartsWith("```"))
         {
             var line = value.IndexOf('\n');
-            if (line < 0 || !value.EndsWith("```")) throw new InvalidDataException("Incomplete JSON fence.");
+            if (line < 0 || !value.EndsWith("```"))
+            {
+                throw new InvalidDataException("Incomplete JSON fence.");
+            }
+
             value = value[(line + 1)..^3].Trim();
         }
         using var doc = JsonDocument.Parse(value);
-        if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Expected a JSON object.");
+        if (doc.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("Expected a JSON object.");
+        }
+
         return value;
     }
     public static async Task SaveAsync(string path, string text)
