@@ -55,3 +55,12 @@ A worsening revision retained the earlier better candidate; minor-only notes did
 Archive export made no transport calls and did not alter original approval records. No new paid model
 calls were made. The included 776-word Aryabhata example is explicitly a Codex-authored editorial
 example using retained evidence, not a claimed live application result or an independent approval.
+
+## Subsequent editorial direction
+
+The user requested a biography-first style. Prompt version `biography-first-v3` supersedes the
+question-led opening and closing History Detective note described in the initial redesign. Open
+with the person, keep explanations within their documented life/work, omit unknown personal details
+instead of discussing missing records, and end with legacy. Source qualifications remain in the
+review report unless essential to a claim that must appear in the chapter. The example has been
+rewritten as a 741-word biography, with no invented birthplace or childhood events.

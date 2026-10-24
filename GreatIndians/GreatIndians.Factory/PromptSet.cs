@@ -2,7 +2,7 @@ namespace GreatIndians.Factory;
 
 public sealed class PromptSet(BookConfig config, string style)
 {
-    public const string Version = "draft-delivery-v2";
+    public const string Version = "biography-first-v3";
 
     public string Rules =>
         $"You are creating historical nonfiction for readers aged {config.AudienceMinAge}-{config.AudienceMaxAge}, in {config.Language}. " +
@@ -10,30 +10,31 @@ public sealed class PromptSet(BookConfig config, string style)
         "Never invent dialogue, personal memories, thoughts, historical firsts or source references. " +
         "A source excerpt proves provenance, not truth: preserve uncertainty and contradictory accounts. " +
         "When support is weak, omit the assertion instead of adding speculative explanations. " +
+        "Omit unknown personal details rather than discussing gaps in the record. Never invent a birthplace, childhood or education to fill them. " +
         "Draft generation is automatic; publication approval remains human. Produce text only.\nSTYLE BIBLE:\n" + style;
 
     public int TargetWords => (config.ChapterWordCountMin + config.ChapterWordCountMax) / 2;
 
     public string Outline => Rules +
         "\nPlan a coherent narrative using 5-7 short story beats. Map each beat to evidence claim IDs. " +
-        "Choose a small set of well-supported achievements rather than covering every fact. " +
+        "Follow the documented life in a clear sequence: introduction and known early context, adult work, important achievements and legacy. " +
         "Do not add personal scenes, motives or background that the evidence does not establish. " +
-        "The opening may be a real documented idea or mathematical puzzle; it need not be an imagined scene. " +
+        "Open directly with the person and known biographical context. Do not open with a puzzle, rhetorical question, imagined scene or address to the reader. " +
         $"Plan for approximately {TargetWords} words. Return only the outline.";
 
     public string Writer => Rules +
         $"\nWrite one complete engaging Markdown chapter of about {TargetWords} words, " +
-        $"within {config.ChapterWordCountMin}-{config.ChapterWordCountMax} words INCLUDING headings and the closing note. " +
+        $"within {config.ChapterWordCountMin}-{config.ChapterWordCountMax} words including the title and headings. " +
         "Use a title and flowing prose with at most three short subheadings. Explain unfamiliar ideas simply. " +
-        "Make the first two sentences spark curiosity through a concrete puzzle or surprising supported idea. " +
-        "Address the young reader naturally; use a simple present-day analogy as an explanation, clearly not an event in the historical life. " +
-        "Build a beginning, middle and satisfying ending around one central question. Make the person and achievement matter to the reader. " +
-        "Build interest through a documented question, challenge, method or achievement. Do not invent childhood scenes. " +
+        "Start directly with the subject: who they were, their documented period and why their life mattered. This is a biography, not a science lesson. " +
+        "Use warm, clear third-person narration. No rhetorical questions, second-person openings, imagined situations or activities for the reader. " +
+        "Build a beginning, middle and ending around the documented life and work. Connect achievements to what the person did, wrote or contributed. " +
+        "Create interest through specific achievements, clear explanations and meaningful consequences. Avoid generic praise and invented childhood scenes. " +
         "Use modest language rather than hero worship. No invented quotations. " +
         "Leave out disputed cosmological interpretations, claims about zero, or other digressions unless essential and well supported. " +
         "A shorter supported account is preferable to padded background or unsupported detail. " +
-        "End with a History Detective note of at most 50 words about uncertainty actually present in this chapter. " +
-        "Do not mention imagined scenes unless the chapter contains one. Return only the chapter; no process notes.";
+        "End with the documented legacy. Do not append a History Detective note, source disclaimer or discussion of what historians do not know. " +
+        "Keep provenance and essential qualifications in the separate review report. Omit disputed nonessential details from the biography. Return only the chapter.";
 
     public string Reviser => Rules +
         $"\nMake a focused revision targeting {TargetWords} words within {config.ChapterWordCountMin}-{config.ChapterWordCountMax}. " +
@@ -41,7 +42,7 @@ public sealed class PromptSet(BookConfig config, string style)
         "When reviewers disagree, prefer the most cautious directly supported wording or remove the nonessential claim. " +
         "Do not satisfy one reviewer by inventing background, adding imaginary scenes or expanding disputed details. " +
         "Preserve passages that already work. If over length, remove repetition and optional sections rather than compressing everything into a fact sheet. " +
-        "Do not add a new paragraph for every finding. Keep the History Detective note under 50 words. " +
+        "Do not add a new paragraph for every finding. Preserve the direct biographical opening and ending on legacy; remove reader activities and research disclaimers. " +
         "Return only the complete revised chapter, without approval notices or a response to reviewers.";
 
     private const string Rubric =
@@ -51,7 +52,7 @@ public sealed class PromptSet(BookConfig config, string style)
         "misleading treatment or material audience problem; minor means optional wording/style improvement. " +
         "Do not label a cautious statement critical merely because you prefer stronger wording. " +
         "If a sentence already expresses uncertainty, recognise that qualification. " +
-        "Do not flag the absence of optional imagination or demand an invented scene. " +
+        "Do not demand an invented scene, question-led hook, reader activity, unknown birthplace discussion or research disclaimer. " +
         "Do not estimate word count: the application checks it. " +
         "Set approved=true when no critical/major issues remain; minor findings may remain as advice. " +
         "Return ONLY JSON {\"approved\":boolean,\"findings\":[{\"claimId\":string,\"severity\":\"critical|major|minor\",\"issue\":string,\"recommendedFix\":string}],\"summary\":string}. All fields required.";
@@ -64,9 +65,9 @@ public sealed class PromptSet(BookConfig config, string style)
 
     public string NarrativeReview => Rules +
         "\nReview engagement, clarity, structure and age suitability only. Do not duplicate the historical review or invent historical corrections. " +
-        "Assess whether an 8-12-year-old would want to keep reading: a curiosity-building opening, concrete explanations and a coherent narrative thread. " +
-        "A birth-date list, encyclopaedic catalogue or dense unexplained terminology is a substantive narrative problem. " +
-        "Do not demand an invented scene or action-adventure plot; a vivid documented question can carry the narrative. " +
+        "Assess whether an 8-12-year-old can follow and enjoy the biography: a direct introduction, clear life/work sequence, concrete achievements and simple language. " +
+        "A direct opening with a name and birth year is appropriate. A disconnected fact list or dense unexplained terminology is not. " +
+        "Keep the focus on the historical person rather than turning the chapter into a general lesson or an interactive exercise. " +
         "Suggest a small number of worthwhile changes; ordinary personal style preferences are minor." + Rubric;
 
     public string CulturalReview => Rules +
@@ -79,4 +80,3 @@ public sealed class PromptSet(BookConfig config, string style)
         "Some chapters may still have unresolved findings; report that transparently without suppressing their draft outputs. " +
         "Do not demand publication readiness or create new individual chapter requirements." + Rubric;
 }
-

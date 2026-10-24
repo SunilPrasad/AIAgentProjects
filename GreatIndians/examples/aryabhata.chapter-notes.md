@@ -1,17 +1,15 @@
 # Aryabhata — editorial example status
 
-This is a new editorial example written by Codex from the retained evidence, not a successful application run or a fresh OpenRouter review. Human publication approval remains pending.
+This 741-word biography is an editorial example written by Codex from retained evidence. It is not presented as an automatic application run or independently approved text. Human publication approval remains pending.
 
-The rewrite uses one central question: why do the stars appear to move? It introduces three concrete explanatory examples (train, circle and shadow), avoids invented personal scenes, removes disputed claims about zero and planetary models, and keeps historical uncertainty about birthplace explicit.
+The revision follows the user's preference: introduce Aryabhata directly, follow his documented work and achievements, explain ideas briefly in biographical context, and end with his influence. It removes the question-led opening, second-person activities, train/cup analogies and commentary about unknown birthplace or gaps in the record. An unknown location is omitted, not replaced by an invented birthplace.
 
-Evidence references from the saved ledger: C1 (birth year and uncertainty), C3-C4 (age, Aryabhatiya and its subjects), C5 (alphabetic number representation), C6 (pi approximation), C7 (Earth rotation), C8 (eclipses and reflected sunlight), C9 (later influence and translations). The exact retained source excerpts remain in the original research artifacts.
+Evidence references from the retained ledger and source snapshots: birth in 476 CE; work in Kusumapura; the Aryabhatiya completed in 499 at age 23; verse and mathematical/astronomical subjects; alphabetic number notation; pi approximation; Earth rotation; eclipses and reflected sunlight; later influence and translations. General explanations of pi, axis and eclipse geometry clarify those achievements without inventing events from his life.
 
-The modern train, cup and string examples are instructional analogies, not claims about Aryabhata's personal life. No independent model review has been executed on this edited version. Review the chapter and supporting sources before publication.
+## Source references
 
-## Retained source references
+- [MacTutor History of Mathematics — Aryabhata I](https://mathshistory.st-andrews.ac.uk/Biographies/Aryabhata_I/)
+- [The Schools' Observatory — Aryabhata](https://www.schoolsobservatory.org/learn/history/biographies/aryabhata)
+- [India Science Heritage](https://indiascienceheritage.gov.in/AtoZ.html)
 
-- [MacTutor History of Mathematics — Aryabhata I](https://mathshistory.st-andrews.ac.uk/Biographies/Aryabhata_I/): life chronology, the Aryabhatiya, mathematical work and astronomical interpretations.
-- [The Schools' Observatory — Aryabhata](https://www.schoolsobservatory.org/learn/history/biographies/aryabhata): birth uncertainty, Earth rotation, eclipses and reflected sunlight.
-- [India Science Heritage](https://indiascienceheritage.gov.in/AtoZ.html): later influence and transmission of mathematical/astronomical work.
-
-These links identify the source snapshots used in the user's research run. The chapter's explanatory analogies are newly written teaching examples.
+No independent model review has been executed on this edited version. Source provenance and publication status are kept here rather than interrupting the reader's biography.

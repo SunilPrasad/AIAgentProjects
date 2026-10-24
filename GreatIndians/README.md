@@ -7,9 +7,9 @@ recorded separately: an unresolved review no longer hides a chapter that has alr
 
 ## Read an example now
 
-[**Aryabhata and the Sky That Would Not Stand Still**](examples/aryabhata.chapter.md) is a
-776-word editorial example created from the retained source evidence. It demonstrates the revised
-curiosity-led writing approach. It is not presented as an automatic pipeline run or an independently
+[**Aryabhata: A Life of Numbers and Stars**](examples/aryabhata.chapter.md) is a
+741-word editorial example created from the retained source evidence. It demonstrates the revised
+biography-first writing approach. It is not presented as an automatic pipeline run or an independently
 approved chapter. [Editorial/source notes](examples/aryabhata.chapter-notes.md) accompany it.
 
 ## Run
@@ -82,9 +82,9 @@ separate editable document. The framework adapter forwards agent instructions as
 1. Search and retrieve sources. Save URLs, text snapshots, timestamps and hashes.
 2. Index exact source excerpts. Let the model select excerpt IDs; code attaches the saved text and
    verifies offsets, hashes, claim IDs and source diversity. Invalid selections receive bounded repair.
-3. Plan one narrative thread around 5–7 supported beats rather than catalogue every achievement.
-4. Write near the middle of the configured range (750 words by default). Use a curiosity-building
-   opening, concrete explanations, a beginning/middle/ending and a short History Detective note.
+3. Plan 5–7 supported biographical beats: direct introduction, documented life/work, achievements and legacy.
+4. Write near the middle of the configured range (750 words by default). Use a direct biographical
+   introduction to the person, clear explanations, a connected life/work sequence and an ending on legacy.
 5. Deliver the first reading copy immediately. The chapter remains available during later stages.
 6. Review concurrently: history checks support/certainty; narrative checks engagement and reading
    level; cultural review checks harmful framing. No role has a quota for findings.
