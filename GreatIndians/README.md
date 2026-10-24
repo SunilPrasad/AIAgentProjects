@@ -1,43 +1,93 @@
-# Great Indians — C# Microsoft Agent Framework prototype
+# Great Indians — automatic text-only book pipeline
 
-**Goal:** inspiring, researched narrative biographies for ages 8–12; not short picture-storybooks. Text and artwork are independent production stages.
-
-## Current implementation
-- C#/.NET console application; Microsoft Agent Framework `AIAgent` writer, reviser, art director.
-- Separate Claude API reviewer; fail-closed on invalid/missing reviewer results.
-- Human-approved evidence input with references and exact excerpts required before writing.
-- Up to three reviews; per-pass drafts and reviewer outputs retained on disk.
-- Generates illustration *briefs*, not actual images. Human approval remains mandatory.
-
-## Prerequisites
-- .NET 10 SDK
-- OpenAI API key (`OPENAI_API_KEY`)
-- Anthropic API key (`ANTHROPIC_API_KEY`)
-- Correct available model IDs configured in `WRITER_MODEL` and `REVIEWER_MODEL`.
-- ChatGPT Plus does **not** include API credits.
+.NET 10 console application using Microsoft Agent Framework agents, typed workflow executors,
+conditional review/revision edges and local framework checkpoints. OpenAI and Anthropic are
+called directly using their public APIs. Azure AI Foundry is not used or required.
 
 ## Run
+
+From this repository's `GreatIndians/GreatIndians.Factory` directory:
+
 ```powershell
-cd GreatIndians.Factory
-$env:OPENAI_API_KEY="..."
-$env:ANTHROPIC_API_KEY="..."
-$env:WRITER_MODEL="gpt-4.1"
-$env:REVIEWER_MODEL="claude-sonnet-4-5"
-dotnet restore
-dotnet run -- chapter ../examples/aryabhata.approved-evidence.example.json ../output/aryabhata
+$env:OPENAI_API_KEY = "your OpenAI API key"
+$env:ANTHROPIC_API_KEY = "your Anthropic API key"
+dotnet run
 ```
-The supplied example is intentionally **unapproved** and has placeholder source evidence. It MUST fail until replaced with checked excerpts and `researchApprovedByHuman` is set to true after actual verification.
 
-## Staged plan
-1. Add web/source retrieval with citation offsets and source snapshot hashes; don't let an LLM certify its own sources.
-2. Convert manual orchestration to MAF typed `Executor<TIn,TOut>` workflows with checkpoints/parallel reviewers; current MVP uses MAF agents coordinated in C# application logic.
-3. Add independent visual generation with persistent character sheets, image API, image review, manual acceptance.
-4. Add PDF/EPUB layout and KDP validation with printable proof review.
-5. Add tests, run telemetry, retry/rate limiting, and review dashboard.
+Edit `book.json` to choose personalities, models, word limits and source requirements.
+Edit `style-bible.md` to change the permanent editorial style. These files are loaded automatically.
+An optional first argument selects a different configuration file: `dotnet run -- C:\path\book.json`.
+The Style Bible and output paths are relative to that configuration file. Running from the project
+folder uses its source `book.json`; the built executable falls back to the copied configuration.
+Keys belong in environment variables, never configuration or source control.
 
-## Limitations and safeguards
-- This code is a **starter**, not a proven production pipeline. It has not been compiled or API-tested in this environment because the .NET SDK is unavailable.
-- A reviewer seeing the evidence ledger cannot independently verify source authenticity. Source retrieval and human checking are indispensable.
-- Current JSON parsing rejects malformed output; model can still misunderstand facts. Human editorial review required.
-- The model IDs and NuGet package versions can change; verify against official documentation.
-- API keys must not be committed to source control.
+The default configuration processes 12 personalities in order. For your first live run, reduce
+`personalities` to one entry. Model IDs must be available to your API accounts; change them in
+`book.json` if necessary. Research uses OpenAI Responses API hosted `web_search`, which has
+additional tool charges. Writer/planner/reviser and narrative reviewer use OpenAI Chat Completions;
+history, cultural sensitivity and book-wide reviewers use Anthropic Messages. Account credits for
+both providers are required. A consumer chat subscription does not supply these API credits.
+
+## What one execution does
+
+1. Loads book configuration and Style Bible, then validates both API keys are present.
+2. Searches the live web for each personality and downloads accessible public HTTPS HTML/text sources.
+3. Saves source text snapshots, URLs, retrieval times and SHA-256 hashes.
+4. Builds a structured evidence ledger. Rejects claims whose exact excerpts are absent from saved
+   source text, and requires evidence from at least two source domains.
+5. Creates an outline and a first Markdown chapter draft using real MAF AIAgents.
+6. Runs historical, children's narrative and cultural sensitivity review agents concurrently.
+7. Applies a deterministic word-count check. All reviewers must explicitly approve with no findings.
+8. Routes rejected chapters through the MAF revision/review loop, up to the configured pass limit.
+9. Saves AI-approved chapters as `final.md`, always pending human publication approval.
+10. Marks unresolved historical/editorial issues BLOCKED; technical failures are recorded separately.
+    Both allow the next personality to proceed.
+11. Reviews the approved chapters together for book-wide editorial consistency and saves a summary.
+    Book-wide findings remain visible and keep the book from passing its overall AI gate.
+
+No images, illustration briefs, PDF, EPUB or publishing files are generated.
+
+## Recovery and outputs
+
+The output tree is organised by book, input/application version and chapter. `current-run.json`
+points to the current version. All earlier version directories are retained. Each chapter stores:
+
+- `research/`: search response, sources and evidence ledger
+- `outline.md` and `drafts/`: planning and all editorial draft versions
+- `reviews/`: individual reviews and quality gates bound to the reviewed draft hash
+- `revisions/`: before/after hashes and findings used for revision
+- `provenance/`: actual prompts, model identifiers and raw provider responses (no API keys)
+- `checkpoints/`: Microsoft Agent Framework filesystem checkpoints
+- `cache/`: input/output-hashed successful stage results
+- `status.json` and, only on approval, `final.md`
+
+Console messages reflect actual workflow activity. `execution.log` also retains those events;
+raw responses contain provider token usage. Prices are not hardcoded: cost is explicitly reported
+as unavailable rather than guessed. Provider error bodies and API keys are excluded from logs.
+Prompts and source snapshots contain book/research content; treat the output folder accordingly.
+
+On restart, intact in-progress chapters restore their MAF checkpoint. If artifacts changed, or a
+chapter previously completed/failed, the graph re-enters through the application stage cache and
+revalidates its results. Completed successful calls with identical inputs do not repeat. Changes to
+configuration, Style Bible or compiled application invalidate the run namespace conservatively.
+Changing a draft never transfers its earlier review approval to the changed text. Interrupted calls
+that did not durably save a successful result can repeat. Failed requests have bounded exponential
+backoff; 429/5xx/timeouts are distinguished from editorial rejection. Ctrl+C saves completed stages.
+Only one process can use an output directory at a time.
+
+Exit codes: `0` all chapter and book AI gates passed (human approval still pending); `2` completed
+with blocked chapters, technical failures or book findings; `1` startup/unhandled failure; `130` cancelled.
+
+## Practical limits and verification
+
+Exact excerpt matching verifies provenance, not historical truth. Independent reviewers assess
+whether claims follow from excerpts, but human editorial approval remains necessary before publication.
+The source downloader supports HTML/text, not PDFs, paywalls or JavaScript-only pages, and retains a
+bounded text snapshot. Insufficient accessible evidence blocks a chapter instead of inventing support.
+`allowedSourceDomains` optionally restricts discovery and retrieval; an empty list searches broadly.
+Different domains alone do not prove editorial independence or scholarly reliability.
+
+The updated application was built successfully with .NET 10.0.103, with zero warnings/errors.
+No unit test project was created. No paid API calls or full end-to-end run were executed: the user
+will perform the live smoke run with both API keys. Recovery and provider behaviour are implemented
+but remain to be verified during that run. See `REVIEW.md` for findings in the original prototype.

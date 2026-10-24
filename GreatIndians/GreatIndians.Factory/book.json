@@ -1,0 +1,24 @@
+{
+  "bookTitle": "Great Indians Who Changed History",
+  "audienceMinAge": 8,
+  "audienceMaxAge": 12,
+  "language": "British English",
+  "chapterWordCountMin": 600,
+  "chapterWordCountMax": 900,
+  "styleBible": "style-bible.md",
+  "outputDirectory": "../output",
+  "writerModel": "gpt-4.1",
+  "researchModel": "gpt-4.1",
+  "reviewerModel": "claude-sonnet-4-5",
+  "maxReviewPasses": 3,
+  "maxAttempts": 3,
+  "minSources": 2,
+  "minClaims": 8,
+  "maxSources": 6,
+  "allowedSourceDomains": [],
+  "personalities": [
+    "Aryabhata", "Brahmagupta", "Chanakya", "Chandragupta Maurya", "Ashoka",
+    "Swami Vivekananda", "Rani Lakshmibai", "Savitribai Phule",
+    "Srinivasa Ramanujan", "C. V. Raman", "B. R. Ambedkar", "A. P. J. Abdul Kalam"
+  ]
+}
