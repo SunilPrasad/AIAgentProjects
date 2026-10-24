@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+.env
+.env.*
+!.env.example
+runs/
+output/
+**/runs/
+**/output/

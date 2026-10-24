@@ -1,0 +1,15 @@
+{
+  "subject": "Aryabhata",
+  "ageGroup": "8-12",
+  "illustrationStyle": "Painterly digital gouache and watercolour; warm luminous colours; age 8-12; consistent recurring character sheet; no text in artwork",
+  "researchApprovedByHuman": false,
+  "claims": [
+    {
+      "id": "ARY-001",
+      "text": "Aryabhata composed the Aryabhatiya in 499 CE.",
+      "status": "supported",
+      "source": "REPLACE_WITH_VERIFIED_SCHOLARLY_SOURCE_URL_AND_PAGE",
+      "quote": "REPLACE_WITH_EXACT_VERIFIED_SOURCE_EXCERPT"
+    }
+  ]
+}
