@@ -10,7 +10,7 @@ public sealed record ProductionConfig
     public string OutputDirectory { get; init; } = "../output/illustrated";
     public string IllustrationStyle { get; init; } = "illustration-style.md";
     public string PlannerModel { get; init; } = "openai/gpt-4.1";
-    public string ImageModel { get; init; } = "google/gemini-3-pro-image-preview";
+    public string ImageModel { get; init; } = "google/gemini-3-pro-image";
     public string VisionModel { get; init; } = "anthropic/claude-sonnet-4.5";
     public string ImageResolution { get; init; } = "2K";
     public int IllustrationCount { get; init; } = 4;

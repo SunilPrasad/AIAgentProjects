@@ -80,7 +80,7 @@ EPUB uses real XHTML paragraphs, emphasis, responsive images, alt text and navig
 All calls use one OpenRouter key. Defaults:
 
 - Planning: `openai/gpt-4.1`.
-- Artwork: `google/gemini-3-pro-image-preview`, 2K.
+- Artwork: `google/gemini-3-pro-image`, 2K.
 - Image and rendered-page review: `anthropic/claude-sonnet-4.5`.
 
 The image adapter uses OpenRouter's [dedicated image API](https://openrouter.ai/docs/guides/overview/multimodal/image-generation). Planning/review use structured JSON responses. Provider availability and costs can vary. A four-illustration chapter requires at least five image generations (including its reference), six planning/image-review calls, and one vision call per PDF page; retries add calls. Usage returned by OpenRouter is logged. `--inspect` makes no API calls.
