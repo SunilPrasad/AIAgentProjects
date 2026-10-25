@@ -18,7 +18,10 @@ public sealed class ChapterDelivery(string outputDirectory, string chapterName, 
         bool finalGenerated = false)
     {
         var destination = Path.Combine(outputDirectory, "chapters");
-        var chapterPath = Path.Combine(destination, chapterName + ".md");
+        var chapterDirectory = finalGenerated
+            ? Path.Combine(outputDirectory, "final-chapters")
+            : destination;
+        var chapterPath = Path.Combine(chapterDirectory, chapterName + ".md");
         var reviewPath = Path.Combine(destination, chapterName + "-review.md");
         var result = new ChapterResult(
             subject, status, files.Root, Data.Hash(draft), reason,
@@ -37,6 +40,15 @@ public sealed class ChapterDelivery(string outputDirectory, string chapterName, 
         }
 
         await Data.SaveAsync(chapterPath, draft);
+
+        if (finalGenerated)
+        {
+            var interimPath = Path.Combine(destination, chapterName + ".md");
+            if (File.Exists(interimPath) && Data.Hash(await File.ReadAllTextAsync(interimPath)) == result.ContentHash)
+            {
+                File.Delete(interimPath);
+            }
+        }
 
         var report = new StringBuilder();
         report.AppendLine($"# {subject} — chapter review");
@@ -195,7 +207,7 @@ public static class BookArchive
         }
 
         await SaveIndexAsync(outputDirectory, config.BookTitle, results);
-        log.LogInformation("[BOOK][Delivery][COMPLETE] Exported {Count} existing chapters without API calls; folder={Folder}", exported, Path.Combine(outputDirectory, "chapters"));
+        log.LogInformation("[BOOK][Delivery][COMPLETE] Exported {Count} existing chapters without API calls; folder={Folder}", exported, Path.Combine(outputDirectory, "final-chapters"));
         return exported == config.Personalities.Count ? 0 : 2;
     }
 
@@ -207,7 +219,9 @@ public static class BookArchive
         {
             if (result.ChapterPath is not null)
             {
-                text.AppendLine($"- [{result.Subject}](chapters/{Path.GetFileName(result.ChapterPath)}) — {result.Status}; [review](chapters/{Path.GetFileName(result.ReviewPath)})");
+                var chapterLink = Path.GetRelativePath(outputDirectory, result.ChapterPath).Replace('\\', '/');
+                var reviewLink = Path.GetRelativePath(outputDirectory, result.ReviewPath!).Replace('\\', '/');
+                text.AppendLine($"- [{result.Subject}]({chapterLink}) — {result.Status}; [review]({reviewLink})");
             }
             else
             {

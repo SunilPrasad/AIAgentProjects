@@ -20,7 +20,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             directory = root,
             version,
             promptVersion = PromptSet.Version,
-            chaptersDirectory = Path.Combine(output, "chapters"),
+            chaptersDirectory = Path.Combine(output, "final-chapters"),
             updatedAt = DateTimeOffset.UtcNow
         }));
         var results = new List<ChapterResult>();
@@ -153,12 +153,12 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             noDraft = results.Count - drafted,
             bookStatus,
             publicationApproved = false,
-            chaptersDirectory = Path.Combine(output, "chapters"),
+            chaptersDirectory = Path.Combine(output, "final-chapters"),
             chapters = results
         }));
         log.LogInformation(
             "[BOOK][Orchestrator][COMPLETE] Requested={Requested}; drafts={Drafted}; AI-approved={Approved}; needs-review={NeedsReview}; no-draft={Missing}; chapters={Folder}",
-            results.Count, drafted, approved, drafted - approved, results.Count - drafted, Path.Combine(output, "chapters"));
+            results.Count, drafted, approved, drafted - approved, results.Count - drafted, Path.Combine(output, "final-chapters"));
         // Exit status reflects chapter production. Editorial approval remains explicit in the report.
         return drafted == results.Count ? 0 : 2;
     }

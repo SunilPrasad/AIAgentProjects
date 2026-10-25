@@ -48,17 +48,21 @@ The obvious reading location is:
 ```text
 GreatIndians/output/
   index.md
-  chapters/
+  final-chapters/
     01-aryabhata.md
+    02-brahmagupta.md
+    ...
+  chapters/
     01-aryabhata-review.md
     01-aryabhata.status.json
-    02-brahmagupta.md
     ...
 ```
 
+The `final-chapters` folder contains only completed chapter Markdown files. Review reports and status
+files stay in `chapters`, which also holds an interim reading copy while writing is in progress.
 The chapter file contains clean reading text. Its report carries findings, reviewer availability,
-word count, selected pass, provenance and human approval status. Files appear as soon as a first
-draft exists and are updated to the selected chapter after review. The console prints their paths.
+word count, selected pass, provenance and human approval status. Interim copies appear as soon as a first
+draft exists; selected completed chapters move into `final-chapters` after review. The console prints their paths.
 The detailed book/run archive also contains `final.md` after chapter generation finishes, even when
 review findings remain. Here **final means the selected output of this bounded generation run**;
 it does not mean approved for publication. `IsFinalGenerated` and `PublicationApproved` are separate
