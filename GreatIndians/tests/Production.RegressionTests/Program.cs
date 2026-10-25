@@ -8,6 +8,27 @@ using SkiaSharp;
 var root = Path.Combine(AppContext.BaseDirectory, "proofs", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 var config = new ProductionConfig();
+var flowFixture = new LayoutManifest(432, 648, 54.96, 3, [],
+[
+    new("paragraph", "P004", 1, 55, 550, "He worked to keep"),
+    new("footer", null, 1, 216, 615, "1"),
+    new("paragraph", "P004", 2, 50, 54, "the new government stable."),
+    new("paragraph", "P005", 2, 50, 90, "Another paragraph begins and"),
+    new("paragraph", "P005", 3, 55, 54, "continues on the final page.")
+], "offline-flow-fixture");
+var firstFlow = PageFlowContext.From(flowFixture, 1);
+var middleFlow = PageFlowContext.From(flowFixture, 2);
+var finalFlow = PageFlowContext.From(flowFixture, 3);
+Check(firstFlow.PreviousPageEnding.Count == 0 && firstFlow.Paragraphs.Single().ContinuesOnLaterPage,
+    "First-page continuation was not identified.");
+Check(firstFlow.NextPageBeginning.First().Text == "the new government stable.", "Next-page context is missing.");
+Check(middleFlow.PreviousPageEnding.Single().Text == "He worked to keep", "Footer leaked into narrative context.");
+Check(middleFlow.Paragraphs.Single(p => p.ParagraphId == "P004").StartedOnEarlierPage
+    && middleFlow.Paragraphs.Single(p => p.ParagraphId == "P005").ContinuesOnLaterPage,
+    "Distinct incoming/outgoing paragraphs were confused.");
+Check(finalFlow.NextPageBeginning.Count == 0 && !finalFlow.Paragraphs.Single().ContinuesOnLaterPage,
+    "A continuation beyond the final page was invented.");
+Console.WriteLine("PASS page-boundary context, incoming/outgoing paragraphs and final-page boundaries");
 var input = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.Combine(root, "manuscripts");
 if (args.Length == 0)
 {

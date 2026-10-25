@@ -122,3 +122,12 @@ dotnet run --project GreatIndians/tests/Production.RegressionTests
 ```
 
 The tests use geometric placeholders and generated text fixtures, verify exact PDF/EPUB text and aspect ratios, check illustration anchors and sparse-page rejection, and reject missing character/style review evidence. Pass a directory containing ten retained Markdown chapters after `--` to exercise those manuscripts instead. They make no model requests and write test proofs under the test build's ignored `bin/.../proofs` directory.
+
+### Sentences continuing across pages
+
+Page reviews receive the verified whole-document text comparison, the preceding page's final three narrative lines,
+the next page's first three narrative lines, and explicit per-paragraph continuation flags. A sentence ending mid-page-turn
+is normal pagination, not missing text. Full passages supplied as illustration context need not fit on that page.
+The reviewer still checks visible clipping, overlap and unreadable text; exact text preservation remains a deterministic check.
+This review-only change preserves the existing run fingerprint, layout and artwork caches. Only changed page-review requests
+need fresh reviews; it does not request new illustrations or change the manuscript.

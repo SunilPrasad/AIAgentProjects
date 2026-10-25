@@ -120,6 +120,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                             manuscript.Subject, manuscript.Title, pageNumber = number,
                             visualStyle = ProductionDesign.Description(config),
                             pageText = layout.Text.Where(t => t.Page == number),
+                            textVerification = checks,
+                            pageFlow = PageFlowContext.From(layout, number),
                             illustrations = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id))
                                 .Select(a => new { a.Scene, a.Review.OverallScore, a.Review.Suggestions,
                                     passages = manuscript.Paragraphs.Where(p => a.Scene.ParagraphIds.Contains(p.Id)) }),

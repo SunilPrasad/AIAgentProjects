@@ -83,6 +83,15 @@ public static class ProductionPrompts
         "on the opening page and no secondary/running headlines elsewhere, correct historical subject, no cropped heads or key objects, " +
         "no unwanted text inside art, scene alignment, and the correct page number. Manuscript formulas are typeset text, not image lettering. " +
         "The deterministic PDF text comparison handles exact spelling and paragraph order; inspect visible presentation as well. " +
+        "PAGINATION: pageText contains only the lines intentionally laid out on the current page. A sentence or paragraph may " +
+        "start on an earlier page or continue on a later page, including a page ending mid-sentence without punctuation. " +
+        "This is normal text flow, not clipping or missing content. pageFlow supplies neighbouring narrative lines and explicit " +
+        "paragraph continuation flags. Neighbouring text is context only and must NOT also appear on the current page. " +
+        "Full source passages attached to illustrations are scene context, not a requirement to print the entire passage on this page. " +
+        "textVerification reports the completed whole-PDF comparison against the source, including extracted text and paragraph order. " +
+        "When it passed, do not reject solely because a sentence is incomplete at a page boundary or its continuation is absent " +
+        "from this page. For example, a page ending 'keep' followed by 'the new government stable' on the next page is valid. " +
+        "Still reject actually cut-off glyphs, unreadable lines, overlap or visible loss of text that belongs to pageText. " +
         "Also check the supplied visualStyle: warm ivory paper, centred royal-blue chapter title, warm-gold chapter number, " +
         "Liberation Serif typography and dark-blue page numbers; " +
         "Reject avoidable large empty areas or a nearly empty continuation page; allow normal end-of-chapter whitespace and print-safe margins. " +
