@@ -13,7 +13,7 @@ public static class ChapterPdfLayout
 {
     public const double Width = 432;
     public const double Height = 648;
-    private const double Outer = 54.96;
+    private const double Outer = 50.4;
     private const double Top = 65.04;
     private const double Bottom = 48;
     private static readonly object FontLock = new();
@@ -24,13 +24,14 @@ public static class ChapterPdfLayout
             => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", faceName + ".ttf"));
 
         public FontResolverInfo ResolveTypeface(string familyName, bool isBold, bool isItalic)
-            => new("DejaVuSerif-" + (isBold && isItalic ? "BoldItalic" : isBold ? "Bold" : isItalic ? "Italic" : "Regular"));
+            => new(ProductionDesign.FontPrefix + (isBold && isItalic ? "BoldItalic" : isBold ? "Bold" : isItalic ? "Italic" : "Regular"));
     }
 
     public static LayoutManifest Create(
         Manuscript manuscript, IReadOnlyList<AcceptedArtwork> artwork, ProductionConfig config,
         string path, double imageScale = 1)
     {
+        config.Validate();
         lock (FontLock)
         {
             GlobalFontSettings.FontResolver ??= new EmbeddedSerifResolver();
@@ -49,12 +50,12 @@ public static class ChapterPdfLayout
             {
                 var style = (italic ? XFontStyleEx.Italic : XFontStyleEx.Regular)
                     | (bold ? XFontStyleEx.Bold : XFontStyleEx.Regular);
-                fonts[key] = font = new XFont("DejaVu Serif", size, style);
+                fonts[key] = font = new XFont(ProductionDesign.FontFamily, size, style);
             }
             return font;
         }
 
-        double inside = Math.Max(Outer, GutterPoints(config.BookPageCountForGutter));
+        double inside = Math.Max(54.96, GutterPoints(config.BookPageCountForGutter));
         var images = new List<ImagePlacement>();
         var text = new List<TextPlacement>();
         var graphics = new List<XGraphics>();
@@ -63,8 +64,10 @@ public static class ChapterPdfLayout
         double left = 0;
         double right = 0;
         double y = 0;
-        var blue = new XSolidBrush(XColor.FromArgb(18, 59, 132));
-        var ink = new XSolidBrush(XColor.FromArgb(34, 41, 54));
+        var blue = new XSolidBrush(ProductionDesign.Colour(ProductionDesign.Title));
+        var ink = new XSolidBrush(ProductionDesign.Colour(ProductionDesign.Body));
+        var chapterInk = new XSolidBrush(ProductionDesign.Colour(ProductionDesign.Gold));
+        var pageNumberInk = new XSolidBrush(ProductionDesign.Colour(ProductionDesign.PageNumber));
         double lineHeight = config.FontSize * config.LineSpacing;
 
         void NewPage()
@@ -78,8 +81,8 @@ public static class ChapterPdfLayout
             left = pageNumber % 2 == 1 ? inside : Outer;
             right = pageNumber % 2 == 1 ? Width - Outer : Width - inside;
             y = Top;
-            canvas.DrawRectangle(new XSolidBrush(XColor.FromArgb(255, 253, 247)), 0, 0, Width, Height);
-            canvas.DrawLine(new XPen(XColor.FromArgb(223, 156, 32), 0.75), left - 4.56, 39.6, right + 4.56, 39.6);
+            canvas.DrawRectangle(new XSolidBrush(ProductionDesign.Colour(ProductionDesign.Paper)), 0, 0, Width, Height);
+            canvas.DrawLine(new XPen(ProductionDesign.Colour(ProductionDesign.Gold), 0.75), left, 39.6, right, 39.6);
         }
 
         List<List<TextRun>> Wrap(IEnumerable<TextRun> runs, double size, double available)
@@ -185,11 +188,11 @@ public static class ChapterPdfLayout
 
         NewPage();
         y = 70;
-        DrawLine([new TextRun($"CHAPTER {manuscript.ChapterNumber}", Bold: true)], "chapter-number", null, 10, 19, blue, centred: true);
+        DrawLine([new TextRun($"CHAPTER {manuscript.ChapterNumber}", Bold: true)], "chapter-number", null, ProductionDesign.ChapterSize, 19, chapterInk, centred: true);
         y += 11;
-        foreach (var line in Wrap([new TextRun(manuscript.Title, Bold: true)], 21.5, right - left))
+        foreach (var line in Wrap([new TextRun(manuscript.Title, Bold: true)], ProductionDesign.TitleSize, right - left))
         {
-            DrawLine(line, "title", null, 21.5, 28, blue, centred: true);
+            DrawLine(line, "title", null, ProductionDesign.TitleSize, 28, blue, centred: true);
         }
         y += 14;
 
@@ -230,7 +233,7 @@ public static class ChapterPdfLayout
         for (int index = 0; index < graphics.Count; index++)
         {
             var footer = (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            graphics[index].DrawString(footer, Font(false, false, 8), blue,
+            graphics[index].DrawString(footer, Font(false, false, ProductionDesign.PageNumberSize), pageNumberInk,
                 new XRect(0, Height - 33, Width, 13), XStringFormats.TopCenter);
             text.Add(new TextPlacement("footer", null, index + 1, Width / 2, Height - 33, footer));
             graphics[index].Dispose();
@@ -282,6 +285,27 @@ public static class ChapterPdfLayout
             }
             foreach (var page in pdf.GetPages())
             {
+                if (page.Letters.Where(letter => !string.IsNullOrWhiteSpace(letter.Value)).Any(letter =>
+                {
+                    var family = (letter.FontName ?? "").Replace(" ", "", StringComparison.Ordinal);
+                    if (!family.Contains("LiberationSerif", StringComparison.OrdinalIgnoreCase)) return true;
+                    var size = letter.PointSize;
+                    string expectedColour;
+                    bool bold = false;
+                    if (Math.Abs(size - ProductionDesign.BodySize) < 0.01) expectedColour = ProductionDesign.Body;
+                    else if (Math.Abs(size - ProductionDesign.TitleSize) < 0.01) { expectedColour = ProductionDesign.Title; bold = true; }
+                    else if (Math.Abs(size - ProductionDesign.ChapterSize) < 0.01) { expectedColour = ProductionDesign.Gold; bold = true; }
+                    else if (Math.Abs(size - ProductionDesign.PageNumberSize) < 0.01) expectedColour = ProductionDesign.PageNumber;
+                    else return true;
+                    if (bold && !family.Contains("Bold", StringComparison.OrdinalIgnoreCase)) return true;
+                    if (letter.Color is null) return true;
+                    var colour = letter.Color.ToRGBValues();
+                    int expectedRgb = Convert.ToInt32(expectedColour[1..], 16);
+                    return Math.Abs(colour.Item1 - ((expectedRgb >> 16) & 255) / 255d) > 0.002
+                        || Math.Abs(colour.Item2 - ((expectedRgb >> 8) & 255) / 255d) > 0.002
+                        || Math.Abs(colour.Item3 - (expectedRgb & 255) / 255d) > 0.002;
+                }))
+                    issues.Add($"Page {page.Number} violates the master font, point-size, weight or text-colour specification.");
                 if (Math.Abs(page.Width - Width) > 0.1 || Math.Abs(page.Height - Height) > 0.1)
                 {
                     issues.Add($"Page {page.Number} is not 6 × 9 inches.");

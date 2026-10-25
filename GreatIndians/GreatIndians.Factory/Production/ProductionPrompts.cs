@@ -24,6 +24,7 @@ public static class ProductionPrompts
         => $"Create artwork only for '{manuscript.Subject}' in '{manuscript.Title}', part of Legends of Ancient India for ages 8–12. " +
             "Do not generate a book page, headings or manuscript text. Follow the supplied character reference consistently.\n" +
             "IMAGE REFERENCE ROLES are listed at the end of this request. An ART STYLE reference only guides rich warm colour, " +
+            "and the written MASTER DESIGN style below takes precedence over any difference in the older reference image. " +
             "painted brushwork, contrast, depth and children's storybook finish. Do NOT copy the example person's identity, " +
             "scene, clothing, buildings, cropping, lettering or historical errors. A reference labelled CHARACTER is for THIS " +
             "chapter; preserve that person's appearance. When no character image is supplied, use the written character sheet for identity.\n" +
@@ -45,8 +46,11 @@ public static class ProductionPrompts
         "Check subject/role, whole head and headwear, important hands/tools, unwanted letters/numbers/logos/watermarks, anatomy, period plausibility, " +
         "passage alignment, consistency with the reference, and sharpness. Do not claim unknown facial features are verified historical likeness. " +
         "Cropping, wrong subject, readable image text, anachronisms, distorted anatomy or inaccurate scientific concepts require rejection. " +
-        "Set matchesVisualStyle honestly: compare bright saturated saffron/gold, turquoise/blue and green palette, hand-painted storybook " +
-        "brushwork, clean contours and warm luminous light with the supplied style reference. Reject photorealistic, dull sepia or flat vector results. " +
+        "Set matchesVisualStyle honestly against the supplied written master style (which overrides the older image example): " +
+        "vibrant cinematic Indian historical children's storybook art, rich watercolour-and-gouache textures, expressive characters, " +
+        "warm golden sunlight, luminous blue skies, lush green foliage, colourful fabrics and beautiful atmospheric depth. " +
+        "Respect the supplied sky blue, turquoise, emerald, sunshine yellow and coral palette. Reject photorealistic, dull sepia, " +
+        "monochrome, muddy shadows, overly busy compositions or flat vector/cartoon results. " +
         "Set every boolean honestly and list concrete issues. Approve only when every check passes; return only the required JSON.";
 
     public const string ReviewPage =
@@ -56,6 +60,7 @@ public static class ProductionPrompts
         "on the opening page and no secondary/running headlines elsewhere, correct historical subject, no cropped heads or key objects, " +
         "no unwanted text inside art, scene alignment, and the correct page number. Manuscript formulas are typeset text, not image lettering. " +
         "The deterministic PDF text comparison handles exact spelling and paragraph order; inspect visible presentation as well. " +
-        "Also check the supplied visualStyle: cream paper, centred blue chapter/title, serif typography and gold top rule; " +
+        "Also check the supplied visualStyle: warm ivory paper, centred royal-blue chapter title, warm-gold chapter number, " +
+        "Liberation Serif typography and dark-blue page numbers; " +
         "reject a visibly different design. Approve only when all mandatory visual/text layout checks pass. Return only the required JSON.";
 }

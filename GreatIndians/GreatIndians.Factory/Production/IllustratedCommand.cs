@@ -40,6 +40,7 @@ public static class IllustratedCommand
         var manuscripts = paths.Select(path => ManuscriptReader.Load(path, config)).ToList();
         if (inspect)
         {
+            Console.WriteLine($"Design {ProductionDesign.Version}: {ProductionDesign.Description(config)}");
             foreach (var m in manuscripts) Console.WriteLine($"{m.Subject}: {m.Paragraphs.Count} paragraphs; {m.SuppressedHeadings.Count} secondary headings suppressed in layout; SHA-256={m.SourceSha256}; source={m.SourcePath}");
             return 0;
         }
@@ -53,6 +54,9 @@ public static class IllustratedCommand
         using var logging = LoggerFactory.Create(b => b.AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "[HH:mm:ss] "; })
             .AddProvider(new FileLogProvider(Path.Combine(output, "production.log"))));
         var logger = logging.CreateLogger("IllustratedProduction");
+        logger.LogInformation("[PDF][DESIGN] {Version}; {Font} {Size}pt; leading={Leading:F2}pt; paper={Paper}",
+            ProductionDesign.Version, ProductionDesign.FontFamily, ProductionDesign.BodySize,
+            ProductionDesign.BodySize * config.LineSpacing, ProductionDesign.Paper);
         using var api = new ProductionApi(config, key, logger);
         var pipeline = new IllustratedPipeline(config, style, api, logger);
         int failed = 0;

@@ -14,8 +14,8 @@
   "maxLayoutAttempts": 2,
   "maxApiAttempts": 3,
   "minimumImageDpi": 300,
-  "fontSize": 12,
-  "lineSpacing": 1.45,
+  "fontSize": 12.1,
+  "lineSpacing": 1.4049586776859504,
   "bookPageCountForGutter": 0,
   "createEpub": true
 }

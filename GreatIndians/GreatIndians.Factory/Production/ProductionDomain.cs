@@ -19,8 +19,8 @@ public sealed record ProductionConfig
     public int MaxLayoutAttempts { get; init; } = 2;
     public int MaxApiAttempts { get; init; } = 3;
     public int MinimumImageDpi { get; init; } = 300;
-    public double FontSize { get; init; } = 12;
-    public double LineSpacing { get; init; } = 1.45;
+    public double FontSize { get; init; } = ProductionDesign.BodySize;
+    public double LineSpacing { get; init; } = ProductionDesign.DefaultLeading / ProductionDesign.BodySize;
     public int BookPageCountForGutter { get; init; }
     public bool CreateEpub { get; init; } = true;
     public string[] Subjects { get; init; } =
@@ -33,12 +33,13 @@ public sealed record ProductionConfig
     {
         if (IllustrationCount is < 4 or > 7 || MaxImageAttempts is < 1 or > 5
             || MaxLayoutAttempts is < 1 or > 3 || MaxApiAttempts is < 1 or > 5
-            || MinimumImageDpi < 300 || FontSize is < 12 or > 13 || LineSpacing is < 1.35 or > 1.5
+            || MinimumImageDpi < 300 || Math.Abs(FontSize - ProductionDesign.BodySize) > 0.000001
+            || FontSize * LineSpacing < 16.5 || FontSize * LineSpacing > 17.5
             || BookPageCountForGutter is < 0 or > 828 || Subjects is not { Length: 10 }
             || Subjects.Any(string.IsNullOrWhiteSpace) || Subjects.Distinct().Count() != Subjects.Length
             || new[] { PlannerModel, ImageModel, VisionModel }.Any(model => string.IsNullOrWhiteSpace(model) || !model.Contains('/')))
         {
-            throw new InvalidDataException("Invalid production configuration. Use 4–7 illustrations, 300+ PPI, 12–13 pt type, and the ten supplied subjects.");
+            throw new InvalidDataException("Invalid production configuration. The master design requires 12.1pt body text and 16.5–17.5pt leading; use 4–7 illustrations, 300+ PPI and the ten supplied subjects.");
         }
     }
 }

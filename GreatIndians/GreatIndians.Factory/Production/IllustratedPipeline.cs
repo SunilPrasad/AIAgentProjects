@@ -18,7 +18,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         if (styleReference is not null && !File.Exists(styleReference))
             throw new FileNotFoundException("The configured illustration style reference is missing.", styleReference);
         var styleReferenceSha256 = styleReference is null ? null : ManuscriptReader.HashFile(styleReference);
-        var fingerprint = Data.Hash(Data.Write(new { manuscript.SourceSha256, config, style, ProductionPrompts.Version, styleReferenceSha256 }))[..16];
+        var fingerprint = Data.Hash(Data.Write(new { manuscript.SourceSha256, config, style, ProductionPrompts.Version, designVersion = ProductionDesign.Version, styleReferenceSha256 }))[..16];
         var root = Path.Combine(outputRoot, name, fingerprint);
         Directory.CreateDirectory(root);
         var previousRoots = Directory.GetDirectories(Path.Combine(outputRoot, name))
@@ -28,6 +28,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         // A previous successful proof remains available under its input hash; this run's status is explicit.
         await files.Save("status.json", Data.Write(new { status = "IN_PROGRESS", manuscript.SourceSha256 }));
         await files.Save("manuscript.json", Data.Write(manuscript));
+        await files.Save("design.json", Data.Write(new { version = ProductionDesign.Version, specification = ProductionDesign.Description(config) }));
         File.Copy(manuscript.SourcePath, Path.Combine(root, "source.md"), true);
         var notes = new List<string>();
         try
@@ -74,9 +75,9 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 log.LogInformation("[PDF][LAYOUT] Creating and checking proof {Attempt}", attempt);
                 var layoutInputs = Data.Hash(Data.Write(new
                 {
-                    version = "reference-layout-v2", manuscript.SourceSha256, config, attempt,
+                    version = ProductionDesign.Version, manuscript.SourceSha256, config, attempt,
                     images = artwork.Select(a => new { a.Scene, a.Sha256 }),
-                    fonts = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "assets", "fonts"), "DejaVuSerif-*.ttf")
+                    fonts = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "assets", "fonts"), ProductionDesign.FontPrefix + "*.ttf")
                         .Order().Select(ManuscriptReader.HashFile).ToArray()
                 }));
                 var receiptPath = Path.Combine(root, "cache", $"layout-{attempt}.json");
@@ -108,7 +109,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                         ProductionPrompts.ReviewPage, Data.Write(new
                         {
                             manuscript.Subject, manuscript.Title, pageNumber = number,
-                            visualStyle = $"Ages 8–12. DejaVu Serif; {config.FontSize}pt body / {config.FontSize * config.LineSpacing}pt leading; centred royal-blue 21.5pt main title; cream #FFFDF7 paper; thin gold top rule; blue page numbers. Artwork: bright warm painterly storybook style, complete heads and no image lettering.",
+                            visualStyle = ProductionDesign.Description(config),
                             pageText = layout.Text.Where(t => t.Page == number),
                             illustrations = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id))
                                 .Select(a => new { a.Scene, passages = manuscript.Paragraphs.Where(p => a.Scene.ParagraphIds.Contains(p.Id)) }),
@@ -153,6 +154,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 await files.Save("status.json", Data.Write(new
                 {
                     status = "PDF_REVIEW_PASSED", sourceSha256 = manuscript.SourceSha256,
+                    designVersion = ProductionDesign.Version,
                     pdfSha256 = ManuscriptReader.HashFile(final), final, pages = layout.PageCount,
                     epubStatus = config.CreateEpub ? "STRUCTURE_CHECKED_PREVIEW_REQUIRED" : "NOT_REQUESTED"
                 }));
@@ -254,6 +256,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
     private Task WriteReport(Artifacts files, Manuscript manuscript, string status, List<string> notes, string? final,
         LayoutManifest? layout = null, LayoutChecks? checks = null)
         => files.Save("QA.md", $"# Production QA — {manuscript.Subject}\n\nStatus: {status}\n\n" +
+            $"Design: {ProductionDesign.Version}\n\n{ProductionDesign.Description(config)}\n\n" +
             $"Source: {manuscript.SourcePath}\n\nSource SHA-256: {manuscript.SourceSha256}\n\nPDF: {final ?? "No final PDF promoted; inspect retained previews and review JSON."}\n\n" +
             (layout is null ? "" : $"PDF pages: {layout.PageCount}. Minimum effective artwork resolution: {layout.Images.Min(i => i.EffectiveDpi):F1} PPI. " +
                 $"Exact selectable text/paragraph comparison: {(checks?.Passed == true ? "PASS" : "FAIL")}. " +

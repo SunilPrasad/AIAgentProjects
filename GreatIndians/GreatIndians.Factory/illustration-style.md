@@ -1,36 +1,31 @@
-# Legends of Ancient India — approved PDF visual reference
+# Master illustration style — Legends of Ancient India, ages 8–12
 
-Match the visual language of the author's supplied Legends_of_Ancient_India_Complete_Illustrated_REVIEW.pdf.
-The extracted art-style-reference.png is a STYLE EXAMPLE only, not an identity, composition or historical source.
+The author's latest MASTER DESIGN SPECIFICATION is authoritative. It overrides the earlier reference PDF
+where they differ. The reference image is a guide to painted visual finish only, never an identity or scene source.
 
-ILLUSTRATION FINISH: richly coloured, hand-painted children's historical storybook illustration.
-Visible fine gouache/oil-like brushwork, confident clean contours, expressive faces, layered scenic depth,
-luminous warm sunlight and crisp readable silhouettes. Bright saffron/orange and golden-yellow highlights;
-terracotta/red cloth and architecture; vivid turquoise and royal-blue water/sky; rich emerald/leaf greens;
-warm natural brown skin; cream/ivory cloth. Strong warm/cool contrast with gentle painted shadows.
-Avoid photorealism, photographic skin, muted brown/sepia grading, heavy blackness, flat vector cartooning,
-anime, plastic 3D rendering, washed-out watercolour and uniformly orange monochrome scenes.
+Vibrant cinematic Indian historical children's storybook art, digitally painted with rich watercolour-and-gouache
+textures, expressive characters, detailed historically inspired Indian environments, warm golden sunlight,
+luminous blue skies, lush green foliage, colourful fabrics, beautiful atmospheric depth, polished professional
+children's publishing quality. Make the action easy for ages 8–12 to understand, with clear focal points.
 
-PAGE DESIGN: 6 x 9 inch cream #FFFDF7 paper; DejaVu Serif body at 12pt with 17.4pt leading for ages 8-12;
-centred DejaVu Serif Bold 21.5pt main headline in royal blue #123B84; centred bold 10pt CHAPTER label;
-body ink #222936; thin 0.75pt gold #DF9C20 top rule; centred blue 8pt page numbers;
-approximately 0.76 inch text side margins; generous paragraph spacing and centred landscape art.
-Only the supplied chapter title is displayed. Never add another headline or rewrite the researched text.
+COLOUR PALETTE: sky blue #4DAAF2; turquoise #28B9C2; emerald green #48A65A; sunshine yellow #F8C94D;
+coral orange #EF7950; royal blue #0C348B; warm gold #B16A14; warm ivory #FFFDF6.
+Use this palette naturally with period-appropriate clothes, warm natural skin tones and golden daylight.
+Avoid dull sepia, monochrome, dark muddy shadows, flat cartoon graphics, photorealism and overly busy compositions.
 
-Identify the historical subject, period, region and profession from THIS manuscript and its character sheet.
-Never copy the example figure, royal status, clothes, buildings or props into a different chapter.
-Use the approved opening illustration as the character reference for later images in the same chapter.
-Appearance is a respectful interpretation, not a claim of a verified portrait. Period-plausible details only.
-No unrelated historical figures, anachronistic buildings, modern instruments, fantasy armour or invented events.
+The authoritative identity, period and profession come from THIS researched manuscript and character sheet.
+Never copy the example person's identity, clothing, status, buildings or props into another chapter.
+Use the approved opening illustration as the character reference for later scenes of the same person.
+Appearance is a respectful interpretation, not a verified portrait. Do not invent historical events or childhood scenes.
 
-Every head, hair/topknot, face, chin and turban/crown must be COMPLETE, with 10-15% breathing room.
-Show important hands, manuscripts and tools completely. Compose a medium/wide scene instead of a tight crop.
-Do not copy a cropped head, distorted anatomy, repeated image title or writing from the reference PDF.
+Keep the entire head, hair and headwear visible. Leave 10–15% safe space above the head.
+Avoid tight portrait cropping. Never crop important faces, hands or objects. Use the requested aspect ratio.
+Never stretch or destructively crop an image. No distorted anatomy, anachronistic objects or unrelated figures.
 
 NO TEXT, NO LETTERS, NO WORDS, NO CAPTIONS, NO TITLES, NO LABELS, NO WATERMARKS, NO TYPOGRAPHY,
-NO WRITING, NO NUMBERS, NO LOGOS. Manuscripts must be completely blank or closed/reverse-facing.
-No pseudo-script or letter-like decorative marks. Mathematical diagrams and formulas are not generated art.
+NO WRITING, NO NUMBERS, NO LOGOS. Manuscripts must be completely blank, closed or reverse-facing.
+No pseudo-script or letter-like marks. Educational diagrams are separate accurate vector graphics, never AI approximations.
 
-Generate artwork only, never a complete book page. The layout engine sets the original manuscript as
-selectable text. Images always use proportional contain fitting: no crop, stretch or resampled enlargement.
-Opening scene 3:2 landscape; later images 16:9, 3:2, 4:3 or 1:1, each tied to its retained source passage.
+Generate each illustration individually, never a screenshot or mock-up of a book page.
+Opening scene 3:2 landscape; later images 16:9, 3:2, 4:3 or 1:1 at passage-supported narrative breaks.
+The separate layout engine preserves every original researched paragraph and typesets all text with embedded fonts.

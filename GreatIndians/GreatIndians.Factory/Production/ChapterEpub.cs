@@ -39,7 +39,7 @@ public static class ChapterEpub
         string[] fontFaces = ["Regular", "Bold", "Italic", "BoldItalic"];
         foreach (var face in fontFaces)
             manifest.Add(new XElement(opf + "item", new XAttribute("id", "font-" + face),
-                new XAttribute("href", "fonts/DejaVuSerif-" + face + ".ttf"), new XAttribute("media-type", "font/ttf")));
+                new XAttribute("href", "fonts/LiberationSerif-" + face + ".ttf"), new XAttribute("media-type", "font/ttf")));
         manifest.Add(new XElement(opf + "item", new XAttribute("id", "font-license"),
             new XAttribute("href", "fonts/LICENSE.txt"), new XAttribute("media-type", "text/plain")));
         var package = new XDocument(new XElement(opf + "package", new XAttribute("version", "3.0"), new XAttribute("unique-identifier", "uid"),
@@ -61,19 +61,12 @@ public static class ChapterEpub
             Write("mimetype", "application/epub+zip", CompressionLevel.NoCompression);
             Write("META-INF/container.xml", "<?xml version=\"1.0\"?><container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles><rootfile full-path=\"OEBPS/package.opf\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>");
             Write("OEBPS/chapter.xhtml", chapter.ToString()); Write("OEBPS/nav.xhtml", nav.ToString()); Write("OEBPS/package.opf", package.ToString());
-            Write("OEBPS/style.css",
-                "@font-face{font-family:DejaVu;src:url('fonts/DejaVuSerif-Regular.ttf');}" +
-                "@font-face{font-family:DejaVu;src:url('fonts/DejaVuSerif-Bold.ttf');font-weight:bold;}" +
-                "@font-face{font-family:DejaVu;src:url('fonts/DejaVuSerif-Italic.ttf');font-style:italic;}" +
-                "@font-face{font-family:DejaVu;src:url('fonts/DejaVuSerif-BoldItalic.ttf');font-style:italic;font-weight:bold;}" +
-                "body{font-family:DejaVu,serif;line-height:1.45;margin:5%;background:#fffdf7;color:#222936;}" +
-                "p{margin:0 0 1em;}h1{font-size:1.8em;text-align:center;color:#123b84;border-top:1px solid #df9c20;padding-top:1em;}" +
-                "figure{margin:1em 0;break-inside:avoid;}img{max-width:100%;height:auto;display:block;margin:auto;}");
+            Write("OEBPS/style.css", ProductionDesign.EpubCss);
             foreach (var a in artwork) archive.CreateEntryFromFile(a.Path, "OEBPS/images/" + a.Scene.Id + ".png");
             foreach (var face in fontFaces)
-                archive.CreateEntryFromFile(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "DejaVuSerif-" + face + ".ttf"),
-                    "OEBPS/fonts/DejaVuSerif-" + face + ".ttf");
-            archive.CreateEntryFromFile(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "DejaVu-LICENSE.txt"), "OEBPS/fonts/LICENSE.txt");
+                archive.CreateEntryFromFile(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "LiberationSerif-" + face + ".ttf"),
+                    "OEBPS/fonts/LiberationSerif-" + face + ".ttf");
+            archive.CreateEntryFromFile(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", "Liberation-LICENSE.txt"), "OEBPS/fonts/LICENSE.txt");
         }
         using (var archive = ZipFile.OpenRead(temporary))
         {
