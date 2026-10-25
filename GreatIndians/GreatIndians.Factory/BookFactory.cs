@@ -254,6 +254,14 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             }));
             var reviews = outcomes.Where(outcome => outcome.Review is not null).Select(outcome => outcome.Review!).ToList();
             var failures = outcomes.Where(outcome => outcome.Failure is not null).Select(outcome => outcome.Failure!).ToList();
+            var audienceIssues = YoungReaderStyle.FindIssues(state.Draft);
+
+            if (audienceIssues.Count > 0)
+            {
+                reviews.Add(new Review(false, audienceIssues,
+                    "Young-reader style check: remove research commentary from the biography."));
+            }
+
             var count = ReviewPolicy.WordCount(state.Draft);
 
             if (count < config.ChapterWordCountMin || count > config.ChapterWordCountMax)

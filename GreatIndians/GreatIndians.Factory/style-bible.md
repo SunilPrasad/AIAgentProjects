@@ -30,3 +30,14 @@ Minor stylistic preferences are advisory. Human publication approval is recorded
 
 Aim for the configured word range. Produce a title and flowing Markdown prose, with at most three
 short subheadings if helpful. Text only; no artwork or publishing files.
+
+The primary audience is children aged 8–12, not adult readers of historical analysis. Use familiar
+words, short sentences and one main idea per paragraph. Briefly explain unfamiliar roles and terms.
+Avoid long lists of abstract theories and comparisons with unrelated historical thinkers.
+
+Do not include research-disclaimer paragraphs about legends, stories passed through traditions,
+missing contemporary records, scholarly disagreements or uncertainty surrounding a person's life.
+For example, do not write 'Most of what people know about Chanakya comes from legends' or 'parts of
+his life are surrounded by uncertainty'. Such commentary belongs in the separate review report.
+Omit the disputed detail rather than inventing certainty. A short, essential attribution can remain
+when needed to avoid misleading the reader; it must not become a discussion of research methods.

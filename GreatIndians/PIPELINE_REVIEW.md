@@ -64,3 +64,12 @@ with the person, keep explanations within their documented life/work, omit unkno
 instead of discussing missing records, and end with legacy. Source qualifications remain in the
 review report unless essential to a claim that must appear in the chapter. The example has been
 rewritten as a 741-word biography, with no invented birthplace or childhood events.
+
+## Young-reader emphasis
+
+Prompt version `young-reader-biography-v4` makes the child audience explicit in every role. The
+writer/reviser omit paragraphs about legends, missing records or scholarly uncertainty; disputed
+details are omitted or briefly attributed only when essential, never turned into invented facts.
+The narrative reviewer checks this preference. A focused deterministic style check also sends
+recognisable research-disclaimer wording back for revision without suppressing final delivery.
+The quoted Chanakya paragraph, simple biography and brief attribution were checked offline.
