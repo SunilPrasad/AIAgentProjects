@@ -25,17 +25,25 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         {
             IllustrationPlan? plan = null;
             string correction = "";
+            var planningErrors = new List<string>();
             for (int attempt = 1; attempt <= config.MaxApiAttempts; attempt++)
             {
                 plan = await api.JsonAsync<IllustrationPlan>($"plan-{attempt}", config.PlannerModel,
                     ProductionPrompts.Plan(style, config.IllustrationCount),
                     Data.Write(new { manuscript.Subject, manuscript.Title, manuscript.Paragraphs, correction }), [], files, ct);
+                var adjustments = new List<string>();
+                plan = IllustrationPlanBinding.Bind(manuscript, plan, adjustments);
                 var errors = ValidatePlan(manuscript, plan, config.IllustrationCount);
+                await files.Save($"reviews/plan-{attempt}-validation.json", Data.Write(new { adjustments, errors, boundPlan = plan }));
+                foreach (var adjustment in adjustments)
+                    log.LogInformation("[PDF][plan-{Attempt}][BIND] {Adjustment}", attempt, adjustment);
                 if (errors.Count == 0) break;
                 correction = string.Join("; ", errors);
+                planningErrors = errors;
+                log.LogWarning("[PDF][plan-{Attempt}][INVALID] {Reasons}", attempt, correction);
                 plan = null;
             }
-            if (plan is null) throw new ProductionReviewException("Illustration plan did not pass identity/passage validation.");
+            if (plan is null) throw new ProductionReviewException("Illustration plan did not pass validation: " + string.Join("; ", planningErrors));
             notes.AddRange(plan.EditorialNotes);
             await files.Save("illustration-plan.json", Data.Write(plan));
 
@@ -199,13 +207,24 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         {
             var scene = plan.Scenes[i];
             int anchor = manuscript.Paragraphs.FindIndex(p => p.Id == scene.InsertBeforeParagraphId);
-            if (scene.Id != $"I{i + 1:D2}" || scene.Subject != manuscript.Subject || anchor <= previous
-                || scene.ParagraphIds is not { Count: > 0 } || scene.ParagraphIds.Any(id => !manuscript.Paragraphs.Any(p => p.Id == id))
-                || !scene.ParagraphIds.Contains(scene.InsertBeforeParagraphId)
-                || string.IsNullOrWhiteSpace(scene.Description) || string.IsNullOrWhiteSpace(scene.AccuracyRequirements)
-                || string.IsNullOrWhiteSpace(scene.AltText) || scene.NegativeConstraints is null
-                || !(i == 0 ? scene.AspectRatio == "3:4" && anchor == 0 : new[] { "16:9", "3:2", "4:3", "1:1" }.Contains(scene.AspectRatio)))
-                errors.Add($"Scene I{i + 1:D2} has invalid identity, ordered passage anchors, aspect ratio or required details.");
+            var prefix = $"Scene I{i + 1:D2}: ";
+            if (scene.Id != $"I{i + 1:D2}") errors.Add(prefix + "incorrect scene ID.");
+            if (scene.Subject != manuscript.Subject) errors.Add(prefix + $"subject must be {manuscript.Subject}.");
+            if (scene.ParagraphIds is not { Count: > 0 }) errors.Add(prefix + "at least one retained source paragraph is required.");
+            else
+            {
+                foreach (var id in scene.ParagraphIds.Where(id => !manuscript.Paragraphs.Any(p => p.Id == id)))
+                    errors.Add(prefix + $"unknown source paragraph {id}.");
+                if (!scene.ParagraphIds.Contains(scene.InsertBeforeParagraphId))
+                    errors.Add(prefix + "placement must be one of the scene's retained source paragraphs.");
+            }
+            if (anchor < 0) errors.Add(prefix + $"unknown placement paragraph '{scene.InsertBeforeParagraphId}'.");
+            else if (anchor <= previous) errors.Add(prefix + "placement must follow the preceding scene.");
+            if (string.IsNullOrWhiteSpace(scene.Description) || string.IsNullOrWhiteSpace(scene.AccuracyRequirements)
+                || string.IsNullOrWhiteSpace(scene.AltText) || scene.NegativeConstraints is null)
+                errors.Add(prefix + "description, accuracy requirements, alt text and negative constraints are required.");
+            if (!(i == 0 ? scene.AspectRatio == "3:4" && anchor == 0 : new[] { "16:9", "3:2", "4:3", "1:1" }.Contains(scene.AspectRatio)))
+                errors.Add(prefix + "opening must use 3:4 at P001; later scenes must use 16:9, 3:2, 4:3 or 1:1.");
             previous = anchor;
         }
         return errors;
@@ -226,5 +245,9 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             "Secondary headings suppressed in the layout only:\n" + string.Join("\n", manuscript.SuppressedHeadings.Select(h => "- " + h.Replace("\n", " "))) +
             "\n\nEditorial notes (manuscript never rewritten):\n" + string.Join("\n", notes.Distinct().Select(n => "- " + n)) +
             "\n\nPublishing checks still required: full-book assembly, final book page count/gutter, cover/spine, KDP preview and physical proof. " +
-            (config.CreateEpub ? "EPUB structure/text checked; Kindle Previewer/device review remains required.\n" : "EPUB not requested.\n"));
+            (config.CreateEpub
+                ? final is not null
+                    ? "EPUB structure/text checked; Kindle Previewer/device review remains required.\n"
+                    : "EPUB has not completed structure/text validation for this invocation.\n"
+                : "EPUB not requested.\n"));
 }
