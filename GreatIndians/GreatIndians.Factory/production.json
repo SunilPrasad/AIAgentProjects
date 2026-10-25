@@ -11,6 +11,7 @@
   "imageResolution": "2K",
   "illustrationCount": 4,
   "maxImageAttempts": 3,
+  "minimumImageScore": 70,
   "maxLayoutAttempts": 2,
   "maxApiAttempts": 3,
   "minimumImageDpi": 300,

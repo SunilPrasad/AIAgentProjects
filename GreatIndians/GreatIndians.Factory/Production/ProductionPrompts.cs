@@ -2,7 +2,7 @@ namespace GreatIndians.Factory.Production;
 
 public static class ProductionPrompts
 {
-    public const string Version = "reference-character-v4";
+    public const string Version = "scored-review-v5";
     public const string NoText = "NO TEXT, NO LETTERS, NO WORDS, NO CAPTIONS, NO TITLES, NO LABELS, NO WATERMARKS, NO TYPOGRAPHY, NO WRITING, NO NUMBERS, NO LOGOS.";
 
     public static string Plan(string style, int sceneCount) =>
@@ -47,31 +47,36 @@ public static class ProductionPrompts
             "\nSTYLE:\n" + style + "\nCORRECTIONS FROM PRIOR REVIEW:\n" + (correction ?? "None.");
 
     public const string ReviewImage =
-        "Independently inspect the actual supplied raster image, not merely its prompt. The first image is the candidate; " +
-        "referenceRoles identifies the purpose and order of all additional images. An art style reference is the visual target for finish, colour and lighting, " +
-        "never the authoritative person or scene. The exact supplied historical subject and passage are authoritative. " +
-        "For scene I01, reject unless the subject is the clearly visible, single prominent main person with enough face and clothing " +
-        "detail to serve as a character reference for the rest of the chapter. Later scenes may legitimately show passage-supported objects or context. " +
-        "Check subject/role, whole head and headwear, important hands/tools, unwanted letters/numbers/logos/watermarks, anatomy, period plausibility, " +
-        "passage alignment, consistency with the reference, and sharpness. Do not claim unknown facial features are verified historical likeness. " +
-        "Cropping, wrong subject, readable image text, anachronisms, distorted anatomy or inaccurate scientific concepts require rejection. " +
-        "Write styleComparison describing the actual candidate versus the art-style reference: saturation, golden directional lighting, " +
-        "painted dimensional faces/fabrics, texture, environment detail and atmospheric depth. A generic 'storybook' resemblance is insufficient. " +
-        "Set referenceColourAndLightMatch=false for noticeably muted/pastel/tan colours or weak flat lighting compared with the reference. " +
-        "Set painterlyDetailMatches=false for heavy outlines, cel shading, simplified cartoon faces or flat backgrounds instead of rich painted detail. " +
-        "If no style image is supplied, compare these features with the written style. " +
-        "Write characterComparison with observable face shape, age, skin tone, beard/moustache state, hair/headwear and clothing colour comparisons " +
-        "against the accepted CHARACTER image, or against the written character sheet for I01. Set characterFeaturesMatch=false and consistentCharacter=false " +
-        "if the main subject changes these features, or a different-looking supporting person takes the main role. " +
-        "If the subject is absent in an allowed object-only scene, explicitly state that and check that no substitute person appears. " +
-        "Do not infer a match merely from the shared historical role. Set matchesVisualStyle honestly against the supplied master style and image: " +
-        "vibrant cinematic Indian historical children's storybook art, rich watercolour-and-gouache textures, expressive characters, " +
-        "warm golden sunlight, luminous blue skies, lush green foliage, colourful fabrics and beautiful atmospheric depth. " +
-        "Respect the supplied sky blue, turquoise, emerald, sunshine yellow and coral palette. Reject photorealistic, dull sepia, " +
-        "monochrome, muddy shadows, overly busy compositions or flat vector/cartoon results. " +
-        "Set every boolean honestly and list concrete issues. Approve only when every check passes; return only the required JSON.";
-
+        "Review the actual candidate image for a children's biography, using the labelled references. " +
+        "Use a practical scored acceptance policy, not exact imitation or perfection. " +
+        "Return integer styleScore, characterScore and qualityScore from 0 to 100. " +
+        "Scale: 90–100 excellent; 80–89 strong; 70–79 usable with minor compromises; 50–69 noticeable weaknesses; below 50 unsuitable. " +
+        "Overall score is 40% style + 30% character + 30% quality. The supplied minimumImageScore is the acceptance threshold, " +
+        "with a minimum of 50 in each category. Do not demand 90-level perfection for a 70-level acceptance threshold. " +
+        "Style: assess appealing colour, lighting, readable composition, painted finish and resemblance to the art-style reference. " +
+        "Visible contour lines, partly line-drawn fabric folds, less dimensional modelling or moderate differences in texture are " +
+        "acceptable compromises when the illustration remains colourful, attractive and suitable for ages 8–12. " +
+        "Character: I01 ESTABLISHES the visual identity. The written appearance is an art-direction suggestion, not historical evidence. " +
+        "For I01, plausible adult-age differences, loose versus tied hair, missing decorative hair bands, clothing shades, borders and draping " +
+        "are soft differences: do not mark correctSubject, historicallyPlausible or consistentCharacter false for them. " +
+        "For later scenes, the accepted CHARACTER IMAGE takes precedence over conflicting written appearance details. " +
+        "Match the recognisable person, especially face, skin tone and facial hair; allow small hairstyle, pose and garment variations. " +
+        "A clearly different main person or major unexplained identity change fails consistentCharacter. " +
+        "For an allowed object-only scene, state that no character is depicted and assess whether a substitute person was introduced. " +
+        "Quality: assess readable action, attractive composition, usable detail and anatomical coherence. " +
+        "Hard rejection flags are wrong subject/role, cropped head or important features, visible generated writing, significant distorted anatomy, " +
+        "clear anachronisms, unsupported scene, clearly different character or unusable sharpness. " +
+        "For I01 require one identifiable prominent subject suitable as the later character reference. " +
+        "Do not claim undocumented faces or speculative clothing colours are verified historical facts. " +
+        "Put ONLY hard rejection reasons in issues. Put minor art-direction differences and improvements in suggestions. " +
+        "Write concrete styleComparison and characterComparison observations. The booleans matchesVisualStyle, " +
+        "referenceColourAndLightMatch, painterlyDetailMatches and characterFeaturesMatch describe close matching, " +
+        "but false values for these soft criteria alone do not veto an otherwise acceptable scored image. " +
+        "Set approved according to the hard flags and supplied numerical threshold, not perfection. Return only the required JSON.";
     public const string ReviewPage =
+        "Illustrations have already passed the configured scored image review. Do not reject a page for accepted soft compromises " +
+        "in brushwork, contour lines, fabric shading, apparent adult age, hairstyle or clothing shades. " +
+        "The opening image establishes identity; do not reimpose the speculative written appearance. " +
         "Review the actual rendered PDF page image as a children's-book production proof. The supplied page text is the authoritative " +
         "manuscript content for this page. Do not rewrite it or ask for historical prose changes. Record any factual/editorial concern " +
         "in editorialNotes separately. Check legibility, complete lines, no overflow/clipping, no image/text overlap, only one chapter headline " +

@@ -31,6 +31,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         await files.Save("design.json", Data.Write(new { version = ProductionDesign.Version, specification = ProductionDesign.Description(config) }));
         File.Copy(manuscript.SourcePath, Path.Combine(root, "source.md"), true);
         var notes = new List<string>();
+        log.LogInformation("[PDF][REVIEW POLICY] {Policy}; accept at {Score}/100 with no hard defects; stop at first acceptable image",
+            ProductionPrompts.Version, config.MinimumImageScore);
         try
         {
             IllustrationPlan? plan = null;
@@ -119,7 +121,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                             visualStyle = ProductionDesign.Description(config),
                             pageText = layout.Text.Where(t => t.Page == number),
                             illustrations = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id))
-                                .Select(a => new { a.Scene, passages = manuscript.Paragraphs.Where(p => a.Scene.ParagraphIds.Contains(p.Id)) }),
+                                .Select(a => new { a.Scene, a.Review.OverallScore, a.Review.Suggestions,
+                                    passages = manuscript.Paragraphs.Where(p => a.Scene.ParagraphIds.Contains(p.Id)) }),
                             pdfSha256 = layout.PdfSha256
                         }), [pages[index]], files, ct);
                     reviews.Add(review);
@@ -186,6 +189,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         IllustrationScene scene, string[] references, Artifacts files, CancellationToken ct)
     {
         string? correction = null;
+        double bestScore = 0;
         for (int attempt = 1; attempt <= config.MaxImageAttempts; attempt++)
         {
             var stage = $"{scene.Id}-attempt-{attempt}";
@@ -195,6 +199,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             var generationRoles = references.Select(_ => "accepted character reference for THIS chapter")
                 .Concat(styleImages.Select(_ => "art style and palette only; never identity, historical setting, lettering or cropping")).ToArray();
             var path = await api.GenerateAsync(stage, ProductionPrompts.Image(manuscript, character, scene, style, correction)
+                + (references.Length == 0 ? "" : "\nThe accepted CHARACTER image establishes the actual appearance. Preserve it even where the written character sheet differs in age, hair or garments.")
                 + "\nATTACHED IMAGE ROLES IN ORDER (empty means no image references):\n" + Data.Write(generationRoles),
                 scene.AspectRatio, generationReferences, files, ct);
             using var bitmap = SKBitmap.Decode(path) ?? throw new InvalidDataException("Cannot decode generated artwork.");
@@ -202,6 +207,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 ProductionPrompts.ReviewImage, Data.Write(new
                 {
                     manuscript.Subject, character, scene,
+                    config.MinimumImageScore,
                     visualStyle = style,
                     referenceRoles = new[] { "candidate artwork" }
                         .Concat(references.Select(_ => "accepted character reference for this chapter"))
@@ -213,12 +219,20 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             var geometry = Math.Min(bitmap.Width, bitmap.Height) >= 768
                 && Math.Abs((double)bitmap.Width / bitmap.Height / (ratio[0] / ratio[1]) - 1) < 0.05;
             await files.Save($"reviews/{stage}.json", Data.Write(new { imageSha256 = ManuscriptReader.HashFile(path), geometry, review }));
-            if (review.Passes && geometry)
+            bestScore = Math.Max(bestScore, review.OverallScore);
+            log.LogInformation("[PDF][{Scene}][SCORE] {Score}/100; minimum={Minimum}; style={Style}; character={Character}; quality={Quality}; hard issues={Issues}",
+                scene.Id, review.OverallScore, config.MinimumImageScore, review.StyleScore, review.CharacterScore, review.QualityScore,
+                string.Join("; ", review.Issues ?? []));
+            if (review.Accepts(config.MinimumImageScore) && geometry)
+            {
+                log.LogInformation("[PDF][{Scene}][ACCEPT] Threshold met; no more image attempts. Compromises: {Suggestions}",
+                    scene.Id, string.Join("; ", review.Suggestions));
                 return new AcceptedArtwork(scene, path, ManuscriptReader.HashFile(path), bitmap.Width, bitmap.Height, review);
+            }
             correction = Data.Write(review) + (geometry ? "" : "; Use the requested aspect ratio and at least 768 pixels on the short edge.");
             log.LogWarning("[PDF][{Scene}][REGENERATE] {Issues}", scene.Id, correction);
         }
-        throw new ProductionReviewException($"Illustration {scene.Id} did not pass review after {config.MaxImageAttempts} attempts.");
+        throw new ProductionReviewException($"Illustration {scene.Id} did not meet the hard checks and {config.MinimumImageScore}/100 threshold after {config.MaxImageAttempts} attempts. Best reported score: {bestScore}/100. Inspect retained images/reviews; no further attempts were purchased.");
     }
 
     public static List<string> ValidatePlan(Manuscript manuscript, IllustrationPlan plan, int count)
@@ -264,6 +278,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         LayoutManifest? layout = null, LayoutChecks? checks = null)
         => files.Save("QA.md", $"# Production QA — {manuscript.Subject}\n\nStatus: {status}\n\n" +
             $"Design: {ProductionDesign.Version}\n\n{ProductionDesign.Description(config)}\n\n" +
+            $"Image review: {ProductionPrompts.Version}; minimum {config.MinimumImageScore}/100 (40% style, 30% character, 30% quality); every category at least 50; hard defects cannot be averaged away.\n\n" +
             $"Source: {manuscript.SourcePath}\n\nSource SHA-256: {manuscript.SourceSha256}\n\nPDF: {final ?? "No final PDF promoted; inspect retained previews and review JSON."}\n\n" +
             (layout is null ? "" : $"PDF pages: {layout.PageCount}. Minimum effective artwork resolution: {layout.Images.Min(i => i.EffectiveDpi):F1} PPI. " +
                 $"Exact selectable text/paragraph comparison: {(checks?.Passed == true ? "PASS" : "FAIL")}. " +

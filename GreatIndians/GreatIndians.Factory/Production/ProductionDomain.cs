@@ -16,6 +16,7 @@ public sealed record ProductionConfig
     public string ImageResolution { get; init; } = "2K";
     public int IllustrationCount { get; init; } = 4;
     public int MaxImageAttempts { get; init; } = 3;
+    public int MinimumImageScore { get; init; } = 70;
     public int MaxLayoutAttempts { get; init; } = 2;
     public int MaxApiAttempts { get; init; } = 3;
     public int MinimumImageDpi { get; init; } = 300;
@@ -32,6 +33,7 @@ public sealed record ProductionConfig
     public void Validate()
     {
         if (IllustrationCount is < 4 or > 7 || MaxImageAttempts is < 1 or > 5
+            || MinimumImageScore is < 70 or > 95
             || MaxLayoutAttempts is < 1 or > 3 || MaxApiAttempts is < 1 or > 5
             || MinimumImageDpi < 300 || Math.Abs(FontSize - ProductionDesign.BodySize) > 0.000001
             || FontSize * LineSpacing < 16.5 || FontSize * LineSpacing > 17.5
@@ -39,7 +41,7 @@ public sealed record ProductionConfig
             || Subjects.Any(string.IsNullOrWhiteSpace) || Subjects.Distinct().Count() != Subjects.Length
             || new[] { PlannerModel, ImageModel, VisionModel }.Any(model => string.IsNullOrWhiteSpace(model) || !model.Contains('/')))
         {
-            throw new InvalidDataException("Invalid production configuration. The master design requires 12.1pt body text and 16.5–17.5pt leading; use 4–7 illustrations, 300+ PPI and the ten supplied subjects.");
+            throw new InvalidDataException("Invalid production configuration. Use a minimum image score of 70–95. The master design requires 12.1pt body text and 16.5–17.5pt leading; use 4–7 illustrations, 300+ PPI and the ten supplied subjects.");
         }
     }
 }
@@ -102,11 +104,26 @@ public sealed record ImageReview(
     [JsonRequired]
     public string CharacterComparison { get; init; } = "";
 
+    [JsonRequired]
+    public int StyleScore { get; init; }
+    [JsonRequired]
+    public int CharacterScore { get; init; }
+    [JsonRequired]
+    public int QualityScore { get; init; }
+    [JsonRequired]
+    public List<string> Suggestions { get; init; } = [];
+
     [JsonIgnore]
-    public bool Passes => Approved && CorrectSubject && FullHeadVisible && ImportantFeaturesVisible
+    public double OverallScore => Math.Round(StyleScore * 0.4 + CharacterScore * 0.3 + QualityScore * 0.3, 1);
+
+    public bool Accepts(int minimumScore) => Passes && OverallScore >= minimumScore;
+
+    [JsonIgnore]
+    public bool Passes => CorrectSubject && FullHeadVisible && ImportantFeaturesVisible
         && NoGeneratedText && AnatomySound && HistoricallyPlausible && MatchesPassage
-        && ConsistentCharacter && SharpEnough && MatchesVisualStyle
-        && ReferenceColourAndLightMatch && PainterlyDetailMatches && CharacterFeaturesMatch
+        && ConsistentCharacter && SharpEnough
+        && StyleScore is >= 50 and <= 100 && CharacterScore is >= 50 and <= 100 && QualityScore is >= 50 and <= 100
+        && OverallScore >= 70 && Suggestions is not null
         && !string.IsNullOrWhiteSpace(StyleComparison) && !string.IsNullOrWhiteSpace(CharacterComparison)
         && Issues is { Count: 0 };
 }

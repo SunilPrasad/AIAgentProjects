@@ -202,7 +202,7 @@ public static class ChapterPdfLayout
 
         void DrawArtwork(AcceptedArtwork art)
         {
-            if (ManuscriptReader.HashFile(art.Path) != art.Sha256 || !art.Review.Passes)
+            if (ManuscriptReader.HashFile(art.Path) != art.Sha256 || !art.Review.Accepts(config.MinimumImageScore))
             {
                 throw new InvalidDataException($"Artwork {art.Scene.Id} changed or has no passing review.");
             }

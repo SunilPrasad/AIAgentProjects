@@ -29,6 +29,9 @@ var fixtureReview = new ImageReview(true, true, true, true, true, true, true, tr
     ReferenceColourAndLightMatch = true,
     PainterlyDetailMatches = true,
     CharacterFeaturesMatch = true,
+    StyleScore = 75,
+    CharacterScore = 75,
+    QualityScore = 75,
     StyleComparison = "OFFLINE geometric placeholder; not a real visual approval.",
     CharacterComparison = "OFFLINE identity fixture; not a real visual approval."
 };
@@ -36,9 +39,9 @@ var fixtureReview = new ImageReview(true, true, true, true, true, true, true, tr
 Check(fixtureReview.Passes, "Complete fixture review should pass.");
 foreach (var rejected in new[]
 {
-    fixtureReview with { ReferenceColourAndLightMatch = false },
-    fixtureReview with { PainterlyDetailMatches = false },
-    fixtureReview with { CharacterFeaturesMatch = false },
+    fixtureReview with { StyleScore = 49, CharacterScore = 100, QualityScore = 100 },
+    fixtureReview with { StyleScore = 69, CharacterScore = 69, QualityScore = 69 },
+    fixtureReview with { QualityScore = 101 },
     fixtureReview with { ConsistentCharacter = false },
     fixtureReview with { FullHeadVisible = false },
     fixtureReview with { StyleComparison = "" },
@@ -47,8 +50,17 @@ foreach (var rejected in new[]
 {
     Check(!rejected.Passes, "Style, identity, crop or missing comparison was accepted.");
 }
+Check((fixtureReview with { Approved = false, ReferenceColourAndLightMatch = false,
+    PainterlyDetailMatches = false, CharacterFeaturesMatch = false, MatchesVisualStyle = false,
+    Suggestions = ["Contour lines and different clothing shades"] }).Accepts(70),
+    "Usable scored image was blocked by soft art-direction differences.");
+Check(!fixtureReview.Accepts(80), "Configured threshold was ignored.");
+Check((fixtureReview with { StyleScore = 70, CharacterScore = 70, QualityScore = 70 }).Accepts(70),
+    "Exact acceptance boundary failed.");
+Check(!(fixtureReview with { NoGeneratedText = false, StyleScore = 100, CharacterScore = 100,
+    QualityScore = 100 }).Passes, "High score bypassed a hard defect.");
 var incomplete = JsonNode.Parse(Data.Write(fixtureReview))!.AsObject();
-incomplete.Remove(nameof(ImageReview.CharacterFeaturesMatch));
+incomplete.Remove(nameof(ImageReview.StyleScore));
 bool rejectedMissingField = false;
 try { Data.Read<ImageReview>(incomplete.ToJsonString()); }
 catch (JsonException) { rejectedMissingField = true; }
