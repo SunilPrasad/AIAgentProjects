@@ -14,6 +14,17 @@ approved chapter. [Editorial/source notes](examples/aryabhata.chapter-notes.md) 
 
 ## Run
 
+To illustrate an **existing researched chapter** and create its reviewed PDF, see
+[Illustrated chapter production](ILLUSTRATED_PRODUCTION.md):
+
+```powershell
+dotnet run -- pdf --chapter Bhaskaracharya --inspect
+dotnet run -- pdf --chapter Bhaskaracharya
+```
+
+The PDF command preserves the saved manuscript, reviews each illustration and every rendered page,
+and promotes a final PDF only after its text and visual checks pass. Optional EPUB: add `--epub`.
+
 From `GreatIndians/GreatIndians.Factory`:
 
 ```powershell

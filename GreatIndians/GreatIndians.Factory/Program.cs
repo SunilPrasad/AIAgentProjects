@@ -11,6 +11,12 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 try
 {
+    if (args.FirstOrDefault() == "pdf")
+    {
+        Environment.ExitCode = await GreatIndians.Factory.Production.IllustratedCommand.RunAsync(args.Skip(1).ToArray(), cancellation.Token);
+        return;
+    }
+
     bool exportExisting = args.FirstOrDefault() == "--export-existing";
     var configArguments = exportExisting ? args.Skip(1).ToArray() : args;
     string configFile;

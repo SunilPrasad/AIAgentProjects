@@ -7,9 +7,15 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="AngleSharp" Version="1.8.5" />
+    <PackageReference Include="Markdig" Version="1.5.0" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.25.0" />
     <PackageReference Include="Microsoft.Agents.AI.Workflows" Version="1.25.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
+    <PackageReference Include="PDFtoImage" Version="5.4.0" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
   </ItemGroup>
-  <ItemGroup><None Update="book.json;style-bible.md" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><None Update="book.json;style-bible.md;production.json;illustration-style.md" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><None Update="assets/fonts/**" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>
