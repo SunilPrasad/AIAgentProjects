@@ -13,9 +13,9 @@ public static class ChapterPdfLayout
 {
     public const double Width = 432;
     public const double Height = 648;
-    private const double Outer = 36;
-    private const double Top = 36;
-    private const double Bottom = 44;
+    private const double Outer = 54.96;
+    private const double Top = 65.04;
+    private const double Bottom = 48;
     private static readonly object FontLock = new();
 
     private sealed class EmbeddedSerifResolver : IFontResolver
@@ -24,7 +24,7 @@ public static class ChapterPdfLayout
             => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "assets", "fonts", faceName + ".ttf"));
 
         public FontResolverInfo ResolveTypeface(string familyName, bool isBold, bool isItalic)
-            => new("NotoSerif-" + (isBold && isItalic ? "BoldItalic" : isBold ? "Bold" : isItalic ? "Italic" : "Regular"));
+            => new("DejaVuSerif-" + (isBold && isItalic ? "BoldItalic" : isBold ? "Bold" : isItalic ? "Italic" : "Regular"));
     }
 
     public static LayoutManifest Create(
@@ -49,12 +49,12 @@ public static class ChapterPdfLayout
             {
                 var style = (italic ? XFontStyleEx.Italic : XFontStyleEx.Regular)
                     | (bold ? XFontStyleEx.Bold : XFontStyleEx.Regular);
-                fonts[key] = font = new XFont("Noto Serif", size, style);
+                fonts[key] = font = new XFont("DejaVu Serif", size, style);
             }
             return font;
         }
 
-        double inside = Math.Max(45, GutterPoints(config.BookPageCountForGutter));
+        double inside = Math.Max(Outer, GutterPoints(config.BookPageCountForGutter));
         var images = new List<ImagePlacement>();
         var text = new List<TextPlacement>();
         var graphics = new List<XGraphics>();
@@ -63,8 +63,8 @@ public static class ChapterPdfLayout
         double left = 0;
         double right = 0;
         double y = 0;
-        var blue = new XSolidBrush(XColor.FromArgb(22, 52, 102));
-        var ink = new XSolidBrush(XColor.FromArgb(37, 40, 43));
+        var blue = new XSolidBrush(XColor.FromArgb(18, 59, 132));
+        var ink = new XSolidBrush(XColor.FromArgb(34, 41, 54));
         double lineHeight = config.FontSize * config.LineSpacing;
 
         void NewPage()
@@ -78,6 +78,8 @@ public static class ChapterPdfLayout
             left = pageNumber % 2 == 1 ? inside : Outer;
             right = pageNumber % 2 == 1 ? Width - Outer : Width - inside;
             y = Top;
+            canvas.DrawRectangle(new XSolidBrush(XColor.FromArgb(255, 253, 247)), 0, 0, Width, Height);
+            canvas.DrawLine(new XPen(XColor.FromArgb(223, 156, 32), 0.75), left - 4.56, 39.6, right + 4.56, 39.6);
         }
 
         List<List<TextRun>> Wrap(IEnumerable<TextRun> runs, double size, double available)
@@ -138,16 +140,19 @@ public static class ChapterPdfLayout
             return lines;
         }
 
-        void DrawLine(List<TextRun> runs, string kind, string? paragraphId, double size, double height, XBrush brush)
+        void DrawLine(List<TextRun> runs, string kind, string? paragraphId, double size, double height, XBrush brush, bool centred = false)
         {
             double x = left;
+            if (centred)
+                x += (right - left - runs.Sum(run => canvas.MeasureString(run.Text, Font(run.Italic, run.Bold, size)).Width)) / 2;
+            double startX = x;
             foreach (var run in runs)
             {
                 var font = Font(run.Italic, run.Bold, size);
                 canvas.DrawString(run.Text, font, brush, new XRect(x, y, right - x + 1, height), XStringFormats.TopLeft);
                 x += canvas.MeasureString(run.Text, font).Width;
             }
-            text.Add(new TextPlacement(kind, paragraphId, pageNumber, left, y, string.Concat(runs.Select(run => run.Text))));
+            text.Add(new TextPlacement(kind, paragraphId, pageNumber, startX, y, string.Concat(runs.Select(run => run.Text))));
             y += height;
         }
 
@@ -157,8 +162,8 @@ public static class ChapterPdfLayout
             {
                 throw new InvalidDataException($"Artwork {art.Scene.Id} changed or has no passing review.");
             }
-            double maximumHeight = (art.Scene.Id == "I01" ? 220 : 178) * imageScale;
-            double scale = Math.Min((right - left) / art.PixelWidth, maximumHeight / art.PixelHeight);
+            double maximumHeight = 226.8 * imageScale;
+            double scale = Math.Min(Math.Min(320.4, right - left) / art.PixelWidth, maximumHeight / art.PixelHeight);
             scale = Math.Min(scale, 72.0 / config.MinimumImageDpi);
             double width = art.PixelWidth * scale;
             double height = art.PixelHeight * scale;
@@ -179,14 +184,14 @@ public static class ChapterPdfLayout
         }
 
         NewPage();
-        DrawLine([new TextRun($"CHAPTER {manuscript.ChapterNumber:D2}")], "chapter-number", null, 10, 19, blue);
-        foreach (var line in Wrap([new TextRun(manuscript.Title, Bold: true)], 23, right - left))
+        y = 70;
+        DrawLine([new TextRun($"CHAPTER {manuscript.ChapterNumber}", Bold: true)], "chapter-number", null, 10, 19, blue, centred: true);
+        y += 11;
+        foreach (var line in Wrap([new TextRun(manuscript.Title, Bold: true)], 21.5, right - left))
         {
-            DrawLine(line, "title", null, 23, 29, blue);
+            DrawLine(line, "title", null, 21.5, 28, blue, centred: true);
         }
-        y += 7;
-        canvas.DrawLine(new XPen(XColor.FromArgb(183, 139, 52), 0.8), left, y, left + 60, y);
-        y += 16;
+        y += 14;
 
         foreach (var paragraph in manuscript.Paragraphs)
         {
@@ -218,14 +223,14 @@ public static class ChapterPdfLayout
                     NewPage();
                 }
             }
-            y += 9;
+            y += 12;
         }
 
         // Footer numbers are drawn last and tracked independently from manuscript content.
         for (int index = 0; index < graphics.Count; index++)
         {
             var footer = (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            graphics[index].DrawString(footer, Font(false, false, 9), ink,
+            graphics[index].DrawString(footer, Font(false, false, 8), blue,
                 new XRect(0, Height - 33, Width, 13), XStringFormats.TopCenter);
             text.Add(new TextPlacement("footer", null, index + 1, Width / 2, Height - 33, footer));
             graphics[index].Dispose();

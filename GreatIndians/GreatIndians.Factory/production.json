@@ -4,6 +4,7 @@
   "manuscriptsDirectory": "../output/final-chapters",
   "outputDirectory": "../output/illustrated",
   "illustrationStyle": "illustration-style.md",
+  "styleReferenceImage": "assets/reference/art-style-reference.png",
   "plannerModel": "openai/gpt-4.1",
   "imageModel": "google/gemini-3-pro-image",
   "visionModel": "anthropic/claude-sonnet-4.5",
@@ -13,8 +14,8 @@
   "maxLayoutAttempts": 2,
   "maxApiAttempts": 3,
   "minimumImageDpi": 300,
-  "fontSize": 12.5,
-  "lineSpacing": 1.4,
+  "fontSize": 12,
+  "lineSpacing": 1.45,
   "bookPageCountForGutter": 0,
   "createEpub": true
 }

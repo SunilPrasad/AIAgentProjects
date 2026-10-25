@@ -9,6 +9,7 @@ public sealed record ProductionConfig
     public string ManuscriptsDirectory { get; init; } = "../output/final-chapters";
     public string OutputDirectory { get; init; } = "../output/illustrated";
     public string IllustrationStyle { get; init; } = "illustration-style.md";
+    public string StyleReferenceImage { get; init; } = "assets/reference/art-style-reference.png";
     public string PlannerModel { get; init; } = "openai/gpt-4.1";
     public string ImageModel { get; init; } = "google/gemini-3-pro-image";
     public string VisionModel { get; init; } = "anthropic/claude-sonnet-4.5";
@@ -18,8 +19,8 @@ public sealed record ProductionConfig
     public int MaxLayoutAttempts { get; init; } = 2;
     public int MaxApiAttempts { get; init; } = 3;
     public int MinimumImageDpi { get; init; } = 300;
-    public double FontSize { get; init; } = 12.5;
-    public double LineSpacing { get; init; } = 1.4;
+    public double FontSize { get; init; } = 12;
+    public double LineSpacing { get; init; } = 1.45;
     public int BookPageCountForGutter { get; init; }
     public bool CreateEpub { get; init; } = true;
     public string[] Subjects { get; init; } =
@@ -86,10 +87,13 @@ public sealed record ImageReview(
     [property: JsonRequired] bool SharpEnough,
     [property: JsonRequired] List<string> Issues)
 {
+    [JsonRequired]
+    public bool MatchesVisualStyle { get; init; } = true;
+
     [JsonIgnore]
     public bool Passes => Approved && CorrectSubject && FullHeadVisible && ImportantFeaturesVisible
         && NoGeneratedText && AnatomySound && HistoricallyPlausible && MatchesPassage
-        && ConsistentCharacter && SharpEnough && Issues is { Count: 0 };
+        && ConsistentCharacter && SharpEnough && MatchesVisualStyle && Issues is { Count: 0 };
 }
 public sealed record PageReview(
     [property: JsonRequired] bool Approved,

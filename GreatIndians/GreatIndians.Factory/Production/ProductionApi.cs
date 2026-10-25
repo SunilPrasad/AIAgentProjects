@@ -100,16 +100,25 @@ public sealed class ProductionApi : IDisposable
         var referenceHashes = references.Select(ManuscriptReader.HashFile).ToArray();
         var input = Data.Write(new { config.ImageModel, config.ImageResolution, prompt, aspectRatio, referenceHashes });
         var receiptPath = Path.Combine(files.Root, "cache", stage + "-image.json");
-        if (File.Exists(receiptPath))
+        foreach (var candidateReceipt in new[] { receiptPath }
+            .Concat(files.PreviousRoots.Select(root => Path.Combine(root, "cache", stage + "-image.json"))))
         {
+            if (!File.Exists(candidateReceipt)) continue;
             try
             {
-                var old = Data.Read<ImageReceipt>(await File.ReadAllTextAsync(receiptPath, ct));
+                var old = Data.Read<ImageReceipt>(await File.ReadAllTextAsync(candidateReceipt, ct));
                 if (old.InputHash == Data.Hash(input) && File.Exists(old.Path)
                     && old.OutputHash == ManuscriptReader.HashFile(old.Path))
                 {
                     log.LogInformation("[PDF][{Stage}][RESUME] Reusing image with matching prompt/reference hashes", stage);
-                    return old.Path;
+                    var destination = Path.Combine(files.Root, "artwork", stage + ".png");
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    if (!destination.Equals(old.Path, StringComparison.OrdinalIgnoreCase))
+                        File.Copy(old.Path, destination, true);
+                    await files.Save($"cache/{stage}-image.json", Data.Write(old with { Path = destination }));
+                    if (candidateReceipt != receiptPath)
+                        await files.Save($"provenance/{stage}-reused.json", Data.Write(new { previousReceipt = candidateReceipt, old.InputHash, old.OutputHash }));
+                    return destination;
                 }
             }
             catch (JsonException)

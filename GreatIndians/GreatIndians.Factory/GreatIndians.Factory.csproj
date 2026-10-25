@@ -18,4 +18,5 @@
   </ItemGroup>
   <ItemGroup><None Update="book.json;style-bible.md;production.json;illustration-style.md" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><None Update="assets/fonts/**" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><None Update="assets/reference/**" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

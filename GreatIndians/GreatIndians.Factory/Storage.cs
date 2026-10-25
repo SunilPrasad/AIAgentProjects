@@ -5,6 +5,7 @@ namespace GreatIndians.Factory;
 public sealed class Artifacts(string root, ILogger logger, string[]? previousResearchRoots = null)
 {
     public string Root { get; } = root;
+    public IReadOnlyList<string> PreviousRoots { get; } = previousResearchRoots ?? [];
 
     private sealed record Entry(string InputHash, string OutputHash, string Content);
 

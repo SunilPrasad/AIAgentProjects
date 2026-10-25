@@ -14,6 +14,11 @@ public static class IllustrationPlanBinding
         for (int index = 0; index < plan.Scenes.Count; index++)
         {
             var scene = plan.Scenes[index];
+            if (index == 0 && scene.AspectRatio == "3:4")
+            {
+                scene = scene with { AspectRatio = "3:2" };
+                adjustments.Add($"{scene.Id}: set landscape 3:2 opening composition for the approved page style.");
+            }
             var paragraphs = scene.ParagraphIds?.ToList();
             if (index == 0 && paragraphs is { Count: 0 })
             {

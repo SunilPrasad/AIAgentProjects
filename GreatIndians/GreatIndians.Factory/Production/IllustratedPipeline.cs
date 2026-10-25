@@ -7,14 +7,23 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
 {
     private sealed record LayoutReceipt(string InputHash, LayoutManifest Manifest);
 
+    private string? StyleReferencePath => string.IsNullOrWhiteSpace(config.StyleReferenceImage)
+        ? null : Path.GetFullPath(config.StyleReferenceImage, AppContext.BaseDirectory);
+
     public async Task<string> RunAsync(Manuscript manuscript, string outputRoot, CancellationToken ct)
     {
         var slug = System.Text.RegularExpressions.Regex.Replace(manuscript.Subject.ToLowerInvariant(), "[^a-z0-9]+", "-");
         var name = $"chapter_{manuscript.ChapterNumber:D2}_{slug}";
-        var fingerprint = Data.Hash(Data.Write(new { manuscript.SourceSha256, config, style, ProductionPrompts.Version }))[..16];
+        var styleReference = StyleReferencePath;
+        if (styleReference is not null && !File.Exists(styleReference))
+            throw new FileNotFoundException("The configured illustration style reference is missing.", styleReference);
+        var styleReferenceSha256 = styleReference is null ? null : ManuscriptReader.HashFile(styleReference);
+        var fingerprint = Data.Hash(Data.Write(new { manuscript.SourceSha256, config, style, ProductionPrompts.Version, styleReferenceSha256 }))[..16];
         var root = Path.Combine(outputRoot, name, fingerprint);
         Directory.CreateDirectory(root);
-        var files = new Artifacts(root, log);
+        var previousRoots = Directory.GetDirectories(Path.Combine(outputRoot, name))
+            .Where(path => !path.Equals(root, StringComparison.OrdinalIgnoreCase)).OrderDescending().ToArray();
+        var files = new Artifacts(root, log, previousRoots);
         var final = Path.Combine(root, name + "_print.pdf");
         // A previous successful proof remains available under its input hash; this run's status is explicit.
         await files.Save("status.json", Data.Write(new { status = "IN_PROGRESS", manuscript.SourceSha256 }));
@@ -47,14 +56,12 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             notes.AddRange(plan.EditorialNotes);
             await files.Save("illustration-plan.json", Data.Write(plan));
 
-            var referenceScene = plan.Scenes[0] with
-            {
-                Id = "character", Description = "A full-length neutral character reference of the exact subject. " +
-                    "Show the complete head, hair/headwear, hands and clothing with generous safe margins. " + plan.Character.Role
-            };
-            var reference = await CreateReviewed(manuscript, plan.Character, referenceScene, [], files, ct);
-            var artwork = new List<AcceptedArtwork>();
-            foreach (var scene in plan.Scenes)
+            // The accepted opening artwork is also the character reference: no duplicate paid portrait.
+            var opening = await CreateReviewed(manuscript, plan.Character, plan.Scenes[0], [], files, ct);
+            var reference = opening with { Scene = opening.Scene with { Id = "character" } };
+            var artwork = new List<AcceptedArtwork> { opening };
+            log.LogInformation("[PDF][CHARACTER] Reusing approved I01 as character reference; one separate generation/review avoided");
+            foreach (var scene in plan.Scenes.Skip(1))
             {
                 ct.ThrowIfCancellationRequested();
                 artwork.Add(await CreateReviewed(manuscript, plan.Character, scene, [reference.Path], files, ct));
@@ -67,9 +74,9 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 log.LogInformation("[PDF][LAYOUT] Creating and checking proof {Attempt}", attempt);
                 var layoutInputs = Data.Hash(Data.Write(new
                 {
-                    version = "layout-v1", manuscript.SourceSha256, config, attempt,
+                    version = "reference-layout-v2", manuscript.SourceSha256, config, attempt,
                     images = artwork.Select(a => new { a.Scene, a.Sha256 }),
-                    fonts = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "assets", "fonts"), "*.ttf")
+                    fonts = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "assets", "fonts"), "DejaVuSerif-*.ttf")
                         .Order().Select(ManuscriptReader.HashFile).ToArray()
                 }));
                 var receiptPath = Path.Combine(root, "cache", $"layout-{attempt}.json");
@@ -101,6 +108,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                         ProductionPrompts.ReviewPage, Data.Write(new
                         {
                             manuscript.Subject, manuscript.Title, pageNumber = number,
+                            visualStyle = $"Ages 8–12. DejaVu Serif; {config.FontSize}pt body / {config.FontSize * config.LineSpacing}pt leading; centred royal-blue 21.5pt main title; cream #FFFDF7 paper; thin gold top rule; blue page numbers. Artwork: bright warm painterly storybook style, complete heads and no image lettering.",
                             pageText = layout.Text.Where(t => t.Page == number),
                             illustrations = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id))
                                 .Select(a => new { a.Scene, passages = manuscript.Paragraphs.Where(p => a.Scene.ParagraphIds.Contains(p.Id)) }),
@@ -119,6 +127,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 ManuscriptReader.VerifySourceUnchanged(manuscript);
                 if (artwork.Append(reference).Any(a => ManuscriptReader.HashFile(a.Path) != a.Sha256))
                     throw new ProductionReviewException("Reviewed artwork changed before finalisation.");
+                if (styleReference is not null && ManuscriptReader.HashFile(styleReference) != styleReferenceSha256)
+                    throw new ProductionReviewException("Illustration style reference changed during production.");
                 if (!ChapterPdfLayout.Verify(preview, manuscript, layout, config).Passed)
                     throw new ProductionReviewException("Final PDF verification failed.");
                 if (config.CreateEpub) ChapterEpub.Create(manuscript, artwork, config, Path.Combine(root, name + ".epub"));
@@ -130,6 +140,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 {
                     manuscript.Subject, manuscript.SourceSha256, layout.PdfSha256,
                     character = plan.Character, characterReview = reference.Review,
+                    characterReferenceReuses = "I01", styleReferenceSha256,
                     illustrations = artwork.Select(art => new
                     {
                         art.Scene, filename = Path.Combine(deliveredArt, art.Scene.Id + ".png"), art.Sha256,
@@ -169,16 +180,26 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         for (int attempt = 1; attempt <= config.MaxImageAttempts; attempt++)
         {
             var stage = $"{scene.Id}-attempt-{attempt}";
-            var path = await api.GenerateAsync(stage, ProductionPrompts.Image(manuscript, character, scene, style, correction),
-                scene.AspectRatio, references, files, ct);
+            var styleReference = StyleReferencePath;
+            string[] styleImages = styleReference is null ? [] : [styleReference];
+            var generationReferences = references.Concat(styleImages).ToArray();
+            var generationRoles = references.Select(_ => "accepted character reference for THIS chapter")
+                .Concat(styleImages.Select(_ => "art style and palette only; never identity, historical setting, lettering or cropping")).ToArray();
+            var path = await api.GenerateAsync(stage, ProductionPrompts.Image(manuscript, character, scene, style, correction)
+                + "\nATTACHED IMAGE ROLES IN ORDER (empty means no image references):\n" + Data.Write(generationRoles),
+                scene.AspectRatio, generationReferences, files, ct);
             using var bitmap = SKBitmap.Decode(path) ?? throw new InvalidDataException("Cannot decode generated artwork.");
             var review = await api.JsonAsync<ImageReview>(stage + "-review", config.VisionModel,
                 ProductionPrompts.ReviewImage, Data.Write(new
                 {
                     manuscript.Subject, character, scene,
+                    visualStyle = style,
+                    referenceRoles = new[] { "candidate artwork" }
+                        .Concat(references.Select(_ => "accepted character reference for this chapter"))
+                        .Concat(styleImages.Select(_ => "art style/palette only; ignore the example person's identity, props and setting")),
                     passages = manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)),
                     imageSha256 = ManuscriptReader.HashFile(path)
-                }), new[] { path }.Concat(references).ToArray(), files, ct);
+                }), new[] { path }.Concat(generationReferences).ToArray(), files, ct);
             var ratio = scene.AspectRatio.Split(':').Select(double.Parse).ToArray();
             var geometry = Math.Min(bitmap.Width, bitmap.Height) >= 768
                 && Math.Abs((double)bitmap.Width / bitmap.Height / (ratio[0] / ratio[1]) - 1) < 0.05;
@@ -223,8 +244,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             if (string.IsNullOrWhiteSpace(scene.Description) || string.IsNullOrWhiteSpace(scene.AccuracyRequirements)
                 || string.IsNullOrWhiteSpace(scene.AltText) || scene.NegativeConstraints is null)
                 errors.Add(prefix + "description, accuracy requirements, alt text and negative constraints are required.");
-            if (!(i == 0 ? scene.AspectRatio == "3:4" && anchor == 0 : new[] { "16:9", "3:2", "4:3", "1:1" }.Contains(scene.AspectRatio)))
-                errors.Add(prefix + "opening must use 3:4 at P001; later scenes must use 16:9, 3:2, 4:3 or 1:1.");
+            if (!(i == 0 ? scene.AspectRatio == "3:2" && anchor == 0 : new[] { "16:9", "3:2", "4:3", "1:1" }.Contains(scene.AspectRatio)))
+                errors.Add(prefix + "opening must use 3:2 at P001; later scenes must use 16:9, 3:2, 4:3 or 1:1.");
             previous = anchor;
         }
         return errors;

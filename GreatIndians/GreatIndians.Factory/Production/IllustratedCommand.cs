@@ -25,6 +25,8 @@ public static class IllustratedCommand
         var directory = Path.GetDirectoryName(configPath)!;
         var config = Data.Read<ProductionConfig>(await File.ReadAllTextAsync(configPath, ct));
         if (epub) config = config with { CreateEpub = true };
+        if (!string.IsNullOrWhiteSpace(config.StyleReferenceImage))
+            config = config with { StyleReferenceImage = Path.GetFullPath(config.StyleReferenceImage, directory) };
         config.Validate();
         var inputRoot = Path.GetFullPath(config.ManuscriptsDirectory, directory);
         var paths = Directory.GetFiles(inputRoot, "*.md").Order().ToList();
