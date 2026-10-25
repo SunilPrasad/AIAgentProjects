@@ -17,7 +17,15 @@
   "maxSources": 6,
   "allowedSourceDomains": [],
   "personalities": [
+    "Baudhayana",
+    "Chanakya",
+    "Chandragupta Maurya",
+    "Ashoka the Great",
+    "Samudragupta",
     "Aryabhata",
-    "Brahmagupta"
+    "Brahmagupta",
+    "Rajaraja Chola I",
+    "Bhaskaracharya",
+    "Chhatrapati Shivaji Maharaj"
   ]
 }
