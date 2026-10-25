@@ -98,7 +98,14 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 var checks = ChapterPdfLayout.Verify(preview, manuscript, layout, config);
                 await files.Save($"text-checks-{attempt}.json", Data.Write(checks));
                 if (!checks.Passed)
+                {
+                    if (attempt < config.MaxLayoutAttempts)
+                    {
+                        log.LogWarning("[PDF][LAYOUT][REBALANCE] {Issues}", string.Join("; ", checks.Issues));
+                        continue;
+                    }
                     throw new ProductionReviewException(string.Join("; ", checks.Issues));
+                }
                 var pages = ChapterPdfLayout.RenderPages(preview, Path.Combine(root, $"pages-{attempt}"));
                 if (pages.Count != layout.PageCount) throw new ProductionReviewException("Not every PDF page was rendered.");
                 var reviews = new List<PageReview>();

@@ -14,7 +14,7 @@ public static class ChapterPdfLayout
     public const double Width = 432;
     public const double Height = 648;
     private const double Outer = 50.4;
-    private const double Top = 65.04;
+    private const double Top = 54;
     private const double Bottom = 48;
     private static readonly object FontLock = new();
 
@@ -30,6 +30,47 @@ public static class ChapterPdfLayout
     public static LayoutManifest Create(
         Manuscript manuscript, IReadOnlyList<AcceptedArtwork> artwork, ProductionConfig config,
         string path, double imageScale = 1)
+    {
+        // Compare inexpensive local proofs before sending any pages for paid review.
+        // Font size, leading, manuscript order and illustration anchors never change.
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var candidates = new List<(string Path, LayoutManifest Layout, double Score)>();
+        try
+        {
+            foreach (double factor in new[] { 1d, 0.94, 0.88, 0.82 })
+            {
+                var candidate = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, $".layout-{Guid.NewGuid():N}.pdf");
+                // Register before creating, so partial files are also cleaned up on failure.
+                candidates.Add((candidate, null!, double.MaxValue));
+                var layout = CreateCore(manuscript, artwork, config, candidate, imageScale * factor);
+                double score = layout.PageCount * 10000 + (1 - factor) * 200;
+                for (int page = 1; page <= layout.PageCount; page++)
+                {
+                    double end = layout.Text.Where(t => t.Page == page && t.Kind != "footer")
+                        .Select(t => t.Y + config.FontSize * config.LineSpacing)
+                        .Concat(layout.Images.Where(i => i.Page == page).Select(i => i.Y + i.Height)).DefaultIfEmpty(Top).Max();
+                    if (page < layout.PageCount) score += Math.Pow(Math.Max(0, Height - Bottom - end - 60), 2);
+                }
+                if (HasSparseTail(layout)) score += 20000;
+                candidates[^1] = (candidate, layout, score);
+            }
+            var best = candidates.MinBy(c => c.Score);
+            File.Copy(best.Path, path, true);
+            return best.Layout;
+        }
+        finally
+        {
+            foreach (var candidate in candidates) File.Delete(candidate.Path);
+        }
+    }
+
+    private static bool HasSparseTail(LayoutManifest layout)
+        => layout.PageCount > 1 && !layout.Images.Any(i => i.Page == layout.PageCount)
+            && layout.Text.Count(t => t.Page == layout.PageCount && t.Kind == "paragraph") < 6;
+
+    private static LayoutManifest CreateCore(
+        Manuscript manuscript, IReadOnlyList<AcceptedArtwork> artwork, ProductionConfig config,
+        string path, double imageScale)
     {
         config.Validate();
         lock (FontLock)
@@ -166,8 +207,13 @@ public static class ChapterPdfLayout
                 throw new InvalidDataException($"Artwork {art.Scene.Id} changed or has no passing review.");
             }
             double maximumHeight = 226.8 * imageScale;
-            double scale = Math.Min(Math.Min(320.4, right - left) / art.PixelWidth, maximumHeight / art.PixelHeight);
+            double scale = Math.Min(Math.Min(320.4 * imageScale, right - left) / art.PixelWidth, maximumHeight / art.PixelHeight);
             scale = Math.Min(scale, 72.0 / config.MinimumImageDpi);
+            double availableHeight = Height - Bottom - y - 14 - lineHeight * 2;
+            double naturalHeight = art.PixelHeight * scale;
+            // Fit at this narrative break when a modest contain-resize avoids a large hole.
+            if (availableHeight < naturalHeight && availableHeight >= Math.Max(110, naturalHeight * 0.72))
+                scale = availableHeight / art.PixelHeight;
             double width = art.PixelWidth * scale;
             double height = art.PixelHeight * scale;
             if (width < 100 || height < 90)
@@ -226,7 +272,7 @@ public static class ChapterPdfLayout
                     NewPage();
                 }
             }
-            y += 12;
+            y += 8;
         }
 
         // Footer numbers are drawn last and tracked independently from manuscript content.
@@ -255,6 +301,8 @@ public static class ChapterPdfLayout
     public static LayoutChecks Verify(string pdfPath, Manuscript manuscript, LayoutManifest manifest, ProductionConfig config)
     {
         var issues = new List<string>();
+        if (HasSparseTail(manifest))
+            issues.Add("Nearly empty final continuation page: rebalance artwork before publication.");
         ManuscriptReader.VerifySourceUnchanged(manuscript);
         if (ManuscriptReader.HashFile(pdfPath) != manifest.PdfSha256)
         {

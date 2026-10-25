@@ -95,8 +95,24 @@ Matching stage results can be reused across earlier run folders for the same cha
 
 ## Design authority
 
-ProductionDesign.cs is the shared definition used for print layout, EPUB CSS and page-review instructions. Each run records its version and settings in design.json. The command logs the applied font, size, leading and paper colour before paid calls. --inspect also shows the design without API calls. Body font size is fixed at 12.1pt; configuration is rejected if it would shrink the text or move leading outside 16.5–17.5pt. The illustration prompt and reviewer use the latest watercolour-and-gouache style and specified art palette; the older example picture is subordinate to this written specification.
+ProductionDesign.cs is the shared definition used for print layout, EPUB CSS and page-review instructions. Each run records its version and settings in design.json. The command logs the applied font, size, leading and paper colour before paid calls. --inspect also shows the design without API calls. Body font size is fixed at 12.1pt; configuration is rejected if it would shrink the text or move leading outside 16.5–17.5pt. The written master controls typography, safety and the palette. The supplied art reference controls the intended saturation, golden lighting, dimensional painted detail and atmospheric finish.
+
+### Reference matching and balanced pages (reference-balanced-v4)
+
+The planner locks one adult appearance, including facial hair, hairstyle and clothing colours. Every later image is generated and reviewed against the approved opening character. Review responses must include specific character and style comparisons, plus passing checks for reference colour/lighting, painterly detail and character features. A generic storybook resemblance or a clean-shaven-to-bearded substitution is insufficient. Rejected scenes alone are retried within the configured limit; actual model judgements still need the author's final visual approval.
+
+Before paid page reviews, the renderer compares four local layouts. It can modestly resize complete illustrations at their existing narrative anchors, uses 8pt paragraph gaps and a 54pt continuation-page top margin, and scores page count and excess whitespace. It never crops images, changes manuscript order, shrinks text or changes configured leading. A nearly empty final continuation page (fewer than six body lines, without artwork) fails deterministic checks and triggers the remaining layout attempt before finalisation. Only the selected proof is sent for vision review, so local comparisons add no API calls.
+
+The new prompt/design versions create a separate run folder. Older artwork reviews do not meet the new required review fields; changed image prompts require new artwork. Existing story files and previous output folders remain intact. Run `dotnet run -- pdf --chapter Baudhayana` from `GreatIndians.Factory` as usual.
 
 ## Verification performed
 
 Offline layout checks used all ten current manuscripts and geometric placeholder images: source paragraph order and text matched PDF/EPUB, fonts were embedded, images exceeded 300 PPI, and all PDF pages rendered. An injected offline HTTP handler exercises planning, image generation/review and page-review wiring, including refusal to finalise cropped images. These fixtures are not historical illustrations or evidence of real vision-model accuracy. Live paid generation and review are left for the user's run.
+
+Run the committed native layout and review-gate regression checks from the repository root:
+
+```powershell
+dotnet run --project GreatIndians/tests/Production.RegressionTests
+```
+
+The tests use geometric placeholders and generated text fixtures, verify exact PDF/EPUB text and aspect ratios, check illustration anchors and sparse-page rejection, and reject missing character/style review evidence. Pass a directory containing ten retained Markdown chapters after `--` to exercise those manuscripts instead. They make no model requests and write test proofs under the test build's ignored `bin/.../proofs` directory.

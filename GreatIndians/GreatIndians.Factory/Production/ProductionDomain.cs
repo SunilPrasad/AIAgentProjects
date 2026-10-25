@@ -91,10 +91,24 @@ public sealed record ImageReview(
     [JsonRequired]
     public bool MatchesVisualStyle { get; init; } = true;
 
+    [JsonRequired]
+    public bool ReferenceColourAndLightMatch { get; init; }
+    [JsonRequired]
+    public bool PainterlyDetailMatches { get; init; }
+    [JsonRequired]
+    public bool CharacterFeaturesMatch { get; init; }
+    [JsonRequired]
+    public string StyleComparison { get; init; } = "";
+    [JsonRequired]
+    public string CharacterComparison { get; init; } = "";
+
     [JsonIgnore]
     public bool Passes => Approved && CorrectSubject && FullHeadVisible && ImportantFeaturesVisible
         && NoGeneratedText && AnatomySound && HistoricallyPlausible && MatchesPassage
-        && ConsistentCharacter && SharpEnough && MatchesVisualStyle && Issues is { Count: 0 };
+        && ConsistentCharacter && SharpEnough && MatchesVisualStyle
+        && ReferenceColourAndLightMatch && PainterlyDetailMatches && CharacterFeaturesMatch
+        && !string.IsNullOrWhiteSpace(StyleComparison) && !string.IsNullOrWhiteSpace(CharacterComparison)
+        && Issues is { Count: 0 };
 }
 public sealed record PageReview(
     [property: JsonRequired] bool Approved,

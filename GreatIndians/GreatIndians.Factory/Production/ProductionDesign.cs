@@ -5,7 +5,7 @@ namespace GreatIndians.Factory.Production;
 /// <summary>Author's master design tokens; shared by layout, EPUB and review prompts.</summary>
 public static class ProductionDesign
 {
-    public const string Version = "liberation-master-v3";
+    public const string Version = "reference-balanced-v4";
     public const string FontFamily = "Liberation Serif";
     public const string FontPrefix = "LiberationSerif-";
     public const double BodySize = 12.1;

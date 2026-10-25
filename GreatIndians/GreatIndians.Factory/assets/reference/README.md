@@ -2,8 +2,9 @@
 
 art-style-reference.png was extracted from page 3 of the author-supplied
 Legends_of_Ancient_India_Complete_Illustrated_REVIEW.pdf. It guides painted finish only.
-The latest MASTER DESIGN SPECIFICATION in ../../../DESIGN_SPECIFICATION.md overrides its typography,
-colours and any conflicting artistic details. Identity, period and scene always come from the current
+The latest MASTER DESIGN SPECIFICATION in ../../../DESIGN_SPECIFICATION.md controls typography,
+palette and print safety. Match this image's rich saturation, golden directional light, dimensional painted
+detail and atmospheric depth. Identity, period and scene always come from the current
 researched manuscript. Never copy the reference person or historical assumptions into another chapter.
 Never copy cropped heads, writing, distorted anatomy or other defects.
 
