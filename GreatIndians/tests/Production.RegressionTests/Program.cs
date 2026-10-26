@@ -5,6 +5,12 @@ using GreatIndians.Factory.Production;
 using SkiaSharp;
 
 // Native layout and acceptance-gate regression tests. No API client or network calls.
+if (args.FirstOrDefault() == "--saved-layout")
+{
+    if (args.Length != 3) throw new ArgumentException("--saved-layout <shared-book.json> <saved-production-run-directory>");
+    SavedLayoutSmokeTest.Run(args[1], args[2]);
+    return;
+}
 ImageReviewSettingsTests.Run();
 await CommonsSearchTests.RunAsync();
 if (args.Contains("--commons-only")) return;

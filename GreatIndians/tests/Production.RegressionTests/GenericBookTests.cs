@@ -10,6 +10,7 @@ using SkiaSharp;
 
 internal static class GenericBookTests
 {
+    private const string LongCreditUrl = "https://collections.example.org/document/historical-scientist-archive-record/617a7a44cf8b8968b33830eb?filter=Personnalit%C3%A9&category=Images%20fixes&sort=dateDePriseDeVue&position=1935&page=127";
     public static async Task RunAsync(string root)
     {
         var books = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../books"));
@@ -108,6 +109,8 @@ internal static class GenericBookTests
         var layout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(run, "layout-1.json")));
         Check(layout.Text.Any(t => t.Kind == "image-credit" && t.Text.Contains("Fixture photographer")), "Photographer credit missing from PDF.");
         Check(layout.Text.Any(t => t.Kind == "image-credit" && t.Text.Contains("creativecommons.org")), "License missing from PDF.");
+        string joinedCredits = System.Text.RegularExpressions.Regex.Replace(string.Concat(layout.Text.Where(t => t.Kind == "image-credit").Select(t => t.Text)), @"\s", "");
+        Check(joinedCredits.Contains(LongCreditUrl), "Long archive URL was truncated, hyphenated or changed while wrapping credits.");
         Check(ChapterPdfLayout.Verify(final, manuscript, layout, config).Passed, "Credit pages broke exact source comparison.");
         int storyEnd = layout.Text.Where(t => t.Kind == "paragraph").Max(t => t.Page);
         var sparseBeforeCredits = layout with
@@ -175,7 +178,7 @@ internal static class GenericBookTests
             pageid = 42, title = "File:Temple Alpha.jpg", imageinfo = new[] { new
             {
                 url = "https://upload.wikimedia.org/fixture.jpg", width = 1800, height = 1200, mime = "image/jpeg",
-                extmetadata = new { Artist = new { value = "Fixture photographer" }, Credit = new { value = "Fixture collection" },
+                extmetadata = new { Artist = new { value = "Fixture photographer" }, Credit = new { value = LongCreditUrl },
                     LicenseShortName = new { value = license }, LicenseUrl = new { value = url } }
             } }
         } } } });

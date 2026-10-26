@@ -130,7 +130,7 @@ public static class ChapterPdfLayout
             canvas.DrawLine(new XPen(ProductionDesign.Colour(ProductionDesign.Gold), 0.75), left, 39.6, right, 39.6);
         }
 
-        List<List<TextRun>> Wrap(IEnumerable<TextRun> runs, double size, double available)
+        List<List<TextRun>> Wrap(IEnumerable<TextRun> runs, double size, double available, bool allowCreditTokenBreaks = false)
         {
             var words = new List<List<TextRun>>();
             var current = new List<TextRun>();
@@ -165,7 +165,27 @@ public static class ChapterPdfLayout
                 double width = word.Sum(run => canvas.MeasureString(run.Text, Font(run.Italic, run.Bold, size)).Width);
                 if (width > available)
                 {
-                    throw new InvalidDataException("A manuscript token is wider than the reading column; no text was cropped or rewritten.");
+                    if (!allowCreditTokenBreaks)
+                        throw new InvalidDataException("A manuscript token is wider than the reading column; no text was cropped or rewritten.");
+                    // Attribution URLs are not narrative words. Preserve every character without inserting hyphens,
+                    // shrinking the font or letting a long archive address overflow the print-safe column.
+                    if (line.Count > 0) { lines.Add(line); line = []; }
+                    used = 0;
+                    foreach (var run in word)
+                    {
+                        var elements = System.Globalization.StringInfo.GetTextElementEnumerator(run.Text);
+                        while (elements.MoveNext())
+                        {
+                            var fragment = run with { Text = elements.GetTextElement() };
+                            double fragmentWidth = canvas.MeasureString(fragment.Text, Font(fragment.Italic, fragment.Bold, size)).Width;
+                            if (fragmentWidth > available) throw new InvalidDataException("An image-credit glyph cannot fit safely in the reading column.");
+                            if (line.Count > 0 && used + fragmentWidth > available)
+                            { lines.Add(line); line = []; used = 0; }
+                            line.Add(fragment);
+                            used += fragmentWidth;
+                        }
+                    }
+                    continue;
                 }
                 if (line.Count > 0 && used + space + width > available)
                 {
@@ -307,7 +327,7 @@ public static class ChapterPdfLayout
             foreach (var art in credited)
             {
                 var credit = art.Credit!.Text(art.Scene.Id).Replace('_', ' ');
-                foreach (var line in Wrap([new TextRun(credit)], config.FontSize, right - left))
+                foreach (var line in Wrap([new TextRun(credit)], config.FontSize, right - left, allowCreditTokenBreaks: true))
                 {
                     if (y + lineHeight > Height - Bottom) NewPage();
                     DrawLine(line, "image-credit", null, config.FontSize, lineHeight, ink);

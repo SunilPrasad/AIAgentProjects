@@ -4,6 +4,8 @@ This is a separate production command for the existing researched Markdown chapt
 
 ## Run one chapter
 
+Image-credit URLs and other long attribution tokens wrap across lines at the normal credit font size, without truncation, inserted hyphens or changes to the source Markdown. Narrative tokens retain the existing strict overflow check. A retained failed run can be layout-tested locally, without model or network calls, using `dotnet run --project tests/Production.RegressionTests -- --saved-layout books/indian-science.json <saved-run-directory>` from `GreatIndians`. It requires unchanged source text and valid saved photograph reviews/hashes, writes `offline-layout-proof/`, verifies selectable text/fonts/placement and renders every page. This produces a diagnostic proof, never a final production approval.
+
 If the cheaper draft image model rejects a request with HTTP 400, 404 or 422, production records the provider error and tries the configured main image model once for that same attempt. Safety/moderation rejections and authentication/billing errors do not trigger this fallback. Every returned image still needs the normal image review. An unchanged rerun reuses the recorded draft rejection and any accepted fallback image. HTTP error details are retained under `provenance/*-http-error-*.json`; the console includes the provider's error message instead of only “Bad Request”. If the main model also rejects the request, production stops with that detailed error.
 
 From `GreatIndians/GreatIndians.Factory`, first inspect the selected source without spending credits:
