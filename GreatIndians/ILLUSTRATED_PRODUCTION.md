@@ -4,6 +4,8 @@ This is a separate production command for the existing researched Markdown chapt
 
 ## Run one chapter
 
+If the cheaper draft image model rejects a request with HTTP 400, 404 or 422, production records the provider error and tries the configured main image model once for that same attempt. Safety/moderation rejections and authentication/billing errors do not trigger this fallback. Every returned image still needs the normal image review. An unchanged rerun reuses the recorded draft rejection and any accepted fallback image. HTTP error details are retained under `provenance/*-http-error-*.json`; the console includes the provider's error message instead of only “Bad Request”. If the main model also rejects the request, production stops with that detailed error.
+
 From `GreatIndians/GreatIndians.Factory`, first inspect the selected source without spending credits:
 
 ```powershell

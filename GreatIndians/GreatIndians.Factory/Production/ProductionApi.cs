@@ -9,6 +9,13 @@ using SkiaSharp;
 
 namespace GreatIndians.Factory.Production;
 
+public sealed class ProductionApiException(HttpStatusCode status, string detail)
+    : HttpRequestException($"OpenRouter HTTP {(int)status}: {detail}", null, status)
+{
+    public bool CanEscalateDraft => status is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity
+        && !System.Text.RegularExpressions.Regex.IsMatch(detail, "safety|content.?policy|content.?filter|prohibited|moderation", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+}
+
 public sealed class ProductionApi : IDisposable
 {
     private readonly ProductionConfig config;
@@ -70,7 +77,7 @@ public sealed class ProductionApi : IDisposable
             log.LogInformation("[PDF][{Stage}][START] OpenRouter/{Model}; images={Count}", stage, model, images.Count);
             for (int attempt = 1; attempt <= config.MaxApiAttempts; attempt++)
             {
-                var response = await Post("chat/completions", body, ct);
+                var response = await Post("chat/completions", body, files, stage, ct);
                 await files.Save($"provenance/{stage}-response-{attempt}.json", response.GetRawText());
                 LogUsage(stage, response);
                 try
@@ -95,6 +102,7 @@ public sealed class ProductionApi : IDisposable
     }
 
     private sealed record ImageReceipt(string InputHash, string OutputHash, string Path);
+    private sealed record DraftRejection(string InputHash, string FallbackModel, string Reason);
 
     public async Task<string> GenerateAsync(
         string stage, string prompt, string aspectRatio, IReadOnlyList<string> references,
@@ -131,6 +139,27 @@ public sealed class ProductionApi : IDisposable
             }
         }
 
+        bool canEscalate = imageModel == config.DraftImageModel && imageModel != config.ImageModel;
+        string rejectionName = $"cache/{stage}-draft-rejection.json";
+        if (canEscalate)
+        {
+            foreach (var sourceRoot in new[] { files.Root }.Concat(files.PreviousRoots))
+            {
+                string rejectionPath = Path.Combine(sourceRoot, rejectionName);
+                if (!File.Exists(rejectionPath)) continue;
+                DraftRejection? rejected = null;
+                try { rejected = Data.Read<DraftRejection>(await File.ReadAllTextAsync(rejectionPath, ct)); }
+                catch (JsonException) { }
+                if (rejected is null) continue;
+                if (rejected.InputHash == Data.Hash(input) && rejected.FallbackModel == config.ImageModel)
+                {
+                    if (sourceRoot != files.Root) await files.Save(rejectionName, Data.Write(rejected));
+                    log.LogInformation("[PDF][{Stage}][MODEL FALLBACK] Reusing recorded draft rejection; use {Model}", stage, config.ImageModel);
+                    return await GenerateAsync(stage, prompt, aspectRatio, references, files, ct, config.ImageModel);
+                }
+            }
+        }
+
         var body = new
         {
             model = imageModel, prompt, n = 1,
@@ -140,7 +169,18 @@ public sealed class ProductionApi : IDisposable
         await files.Save($"provenance/{stage}-request.json", input);
         log.LogInformation("[PDF][{Stage}][GENERATE] OpenRouter/{Model}; aspect={Ratio}; resolution={Resolution}",
             stage, imageModel, aspectRatio, config.ImageResolution);
-        var response = await Post("images", body, ct);
+        JsonElement response;
+        try
+        {
+            response = await Post("images", body, files, canEscalate ? stage + "-draft" : stage, ct);
+        }
+        catch (ProductionApiException ex) when (canEscalate && ex.CanEscalateDraft && !ct.IsCancellationRequested)
+        {
+            await files.Save(rejectionName, Data.Write(new DraftRejection(Data.Hash(input), config.ImageModel, ex.Message)));
+            log.LogWarning("[PDF][{Stage}][MODEL FALLBACK] {Draft} rejected this request: {Reason}. Trying configured main model {Model} once; review requirements unchanged",
+                stage, imageModel, ex.Message, config.ImageModel);
+            return await GenerateAsync(stage, prompt, aspectRatio, references, files, ct, config.ImageModel);
+        }
         LogUsage(stage, response);
         var bytes = Convert.FromBase64String(response.GetProperty("data")[0].GetProperty("b64_json").GetString() ?? "");
         using var bitmap = SKBitmap.Decode(bytes) ?? throw new InvalidDataException("Image response is not a decodable raster image.");
@@ -168,7 +208,7 @@ public sealed class ProductionApi : IDisposable
         return path;
     }
 
-    private async Task<JsonElement> Post(string route, object body, CancellationToken ct)
+    private async Task<JsonElement> Post(string route, object body, Artifacts files, string stage, CancellationToken ct)
     {
         for (int attempt = 1; ; attempt++)
         {
@@ -179,6 +219,17 @@ public sealed class ProductionApi : IDisposable
                 request.Headers.Add("X-OpenRouter-Title", "Legends of Ancient India Production");
                 request.Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
                 using var response = await http.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    string error = Redact(await response.Content.ReadAsStringAsync(ct));
+                    await files.Save($"provenance/{stage}-http-error-{attempt}.json", Data.Write(new
+                    {
+                        route, status = (int)response.StatusCode, response.ReasonPhrase, body = error
+                    }));
+                    if (!((int)response.StatusCode >= 500 || response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout)
+                        || attempt >= config.MaxApiAttempts)
+                        throw new ProductionApiException(response.StatusCode, ErrorDetail(error));
+                }
                 if (((int)response.StatusCode >= 500 || response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout)
                     && attempt < config.MaxApiAttempts)
                 {
@@ -187,11 +238,12 @@ public sealed class ProductionApi : IDisposable
                     await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(wait.TotalSeconds, 1, 45)), ct);
                     continue;
                 }
-                response.EnsureSuccessStatusCode();
                 using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
                 if (document.RootElement.TryGetProperty("error", out _))
                 {
-                    throw new InvalidDataException("OpenRouter returned an API error; finalisation stopped.");
+                    string error = Redact(document.RootElement.GetRawText());
+                    await files.Save($"provenance/{stage}-http-error-{attempt}.json", error);
+                    throw new ProductionApiException(response.StatusCode, ErrorDetail(error));
                 }
                 return document.RootElement.Clone();
             }
@@ -202,6 +254,30 @@ public sealed class ProductionApi : IDisposable
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), ct);
             }
         }
+    }
+
+    private string Redact(string value)
+    {
+        if (key.Length > 0) value = value.Replace(key, "[REDACTED]", StringComparison.Ordinal);
+        value = System.Text.RegularExpressions.Regex.Replace(value, @"data:image/[^;\s]+;base64,[A-Za-z0-9+/=]+", "[IMAGE REDACTED]");
+        return value.Length > 16000 ? value[..16000] + " [truncated]" : value;
+    }
+
+    private static string ErrorDetail(string raw)
+    {
+        string detail = raw;
+        try
+        {
+            using var parsed = JsonDocument.Parse(raw);
+            if (parsed.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
+            {
+                detail = error.TryGetProperty("message", out var message) ? message.ToString() : error.ToString();
+                if (error.TryGetProperty("metadata", out var metadata)) detail += "; " + metadata.ToString();
+            }
+        }
+        catch (JsonException) { }
+        detail = Data.Normalize(detail);
+        return detail.Length > 2000 ? detail[..2000] + " [truncated; see provenance error file]" : detail;
     }
 
     private void LogUsage(string stage, JsonElement response)
