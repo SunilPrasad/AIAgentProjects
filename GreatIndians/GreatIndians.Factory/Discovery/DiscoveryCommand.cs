@@ -45,6 +45,7 @@ public static class DiscoveryConfigStore
         var approval = new DiscoveryApproval
         {
             InputFingerprint = result.Fingerprint, RequestedProfile = result.RequestedProfile,
+            Prompt = settings.Prompt,
             SubjectListHash = hash, JurorModels = settings.JurorModels, RunNonce = result.RunNonce,
             ReportPath = Path.Combine(result.Root, "selection-report.md"),
             Topics = result.Selected.Select(d => new ApprovedTopic(d.Candidate.Id, d.Candidate.Name, d.ApprovingJurors)).ToArray()
@@ -95,7 +96,7 @@ public static class DiscoveryCommand
 {
     public static async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
-        string? title = null, bookPath = null, profile = null;
+        string? title = null, bookPath = null, profile = null, prompt = null;
         int? count = null;
         bool inspect = false, preview = false, fresh = false;
         for (int index = 0; index < args.Length; index++)
@@ -106,11 +107,12 @@ public static class DiscoveryCommand
                 case "--title": title = Value(); break;
                 case "--book": bookPath = Value(); break;
                 case "--profile": profile = Value(); break;
+                case "--prompt": prompt = Value(); break;
                 case "--count": count = int.Parse(Value(), System.Globalization.CultureInfo.InvariantCulture); break;
                 case "--inspect": inspect = true; break;
                 case "--preview": preview = true; break;
                 case "--fresh": fresh = true; break;
-                case "--help": Console.WriteLine("discover --title <title> [--book <shared-book.json>] [--profile auto|biography|scientific-biography|temple|place|event|nonfiction] [--count 10] [--preview] [--inspect] [--fresh]"); return 0;
+                case "--help": Console.WriteLine("discover --title <title> [--book <shared-book.json>] [--prompt <scope instructions>] [--profile auto|biography|scientific-biography|temple|place|event|nonfiction] [--count 10] [--preview] [--inspect] [--fresh]"); return 0;
                 default: throw new ArgumentException("Unknown discovery argument: " + args[index]);
             }
         }
@@ -130,7 +132,8 @@ public static class DiscoveryCommand
         bookPath = Path.GetFullPath(bookPath);
         string? original = File.Exists(bookPath) ? await File.ReadAllTextAsync(bookPath, ct) : null;
         var book = DiscoveryConfigStore.Read(original, title);
-        var settings = book.Discovery with { ChapterCount = count ?? book.Discovery.ChapterCount };
+        var settings = book.Discovery with { ChapterCount = count ?? book.Discovery.ChapterCount,
+            Prompt = prompt?.Trim() ?? book.Discovery.Prompt };
         settings.Validate();
         profile ??= book.DiscoveryApproval?.RequestedProfile ?? (original is null ? "auto" : book.Profile);
         if (profile != "auto" && !ContentProfiles.All.Contains(profile)) throw new ArgumentException("Unsupported --profile.");
@@ -139,6 +142,7 @@ public static class DiscoveryCommand
         string baseRoot = Path.Combine(Path.GetFullPath(book.OutputRoot, Path.GetDirectoryName(bookPath)!), book.Id, "discovery");
         string root = Path.Combine(baseRoot, fingerprint);
         Console.WriteLine($"Discovery: {book.Title}; chapters={settings.ChapterCount}; profile={profile}; majority=2/3");
+        if (settings.Prompt.Length > 0) Console.WriteLine($"Scope prompt: {settings.Prompt}");
         Console.WriteLine($"Jurors: {string.Join(", ", settings.JurorModels)}\nBook JSON: {bookPath}\nReport directory: {root}");
         if (inspect) return 0;
         string key = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") ?? "";

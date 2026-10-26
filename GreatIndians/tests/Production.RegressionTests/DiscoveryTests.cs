@@ -122,6 +122,20 @@ internal static class DiscoveryTests
         var retry = new FakeClient { InvalidFirstNomination = true };
         await new TopicDiscoveryPipeline(retry, NullLogger.Instance).RunAsync(book, settings, "auto", Path.Combine(root, "retry"), "", default);
         Check(retry.Nominations == 4 && retry.Ballots == 3, "Invalid evidence nomination did not receive one bounded corrective retry.");
+        var scopedSettings = settings with { Prompt = "Modern scientists only, active from 1800 onwards. Exclude ancient and medieval figures such as Aryabhata." };
+        var scopedClient = new FakeClient { ExpectedPrompt = scopedSettings.Prompt };
+        var scopedResult = await new TopicDiscoveryPipeline(scopedClient, NullLogger.Instance)
+            .RunAsync(book, scopedSettings, "auto", Path.Combine(root, "scoped"), "", default);
+        Check(scopedClient.ScopeReachedResearch && scopedClient.ScopeReachedAllJurors == 6,
+            "Scope prompt did not reach research and all three nominations/ballots.");
+        Check(scopedResult.Fingerprint != result.Fingerprint, "Changed scope reused unscoped vote caches.");
+        string scopedPath = Path.Combine(root, "scoped.json");
+        await DiscoveryConfigStore.ApplyAsync(scopedPath, null, book, scopedSettings, scopedResult, default);
+        var scopedBook = BookDefinition.Load(scopedPath);
+        Check(scopedBook.Discovery.Prompt == scopedSettings.Prompt && scopedBook.Title == book.Title,
+            "Scope was not persisted separately from title.");
+        Reject(() => (scopedBook with { Discovery = scopedSettings with { Prompt = "Ancient scientists only" } }).Validate(),
+            "old majority approval reused after scope change");
         Console.WriteLine("PASS discovery: three blind jurors, majority-only ranking, evidence/ballot validation, outage resume, cache reuse, safe JSON backup/update, certificate and output isolation");
     }
 
@@ -129,9 +143,13 @@ internal static class DiscoveryTests
     {
         public int ResearchCalls, Nominations, Ballots;
         public bool FailJuror, CorruptSource, InvalidFirstNomination, Blind = true;
-        public Task<List<Source>> ResearchAsync(BookConfig config, Artifacts files, CancellationToken ct)
+        public string ExpectedPrompt = "";
+        public bool ScopeReachedResearch;
+        public int ScopeReachedAllJurors;
+        public Task<List<Source>> ResearchAsync(BookConfig config, string prompt, Artifacts files, CancellationToken ct)
         {
             Interlocked.Increment(ref ResearchCalls);
+            ScopeReachedResearch = prompt == ExpectedPrompt;
             string text = string.Join(" ", Enumerable.Repeat("Alpha Scientist, Beta Scientist and Gamma Scientist contributed documented scientific work to this field.", 8));
             return Task.FromResult(new List<Source>
             {
@@ -142,6 +160,7 @@ internal static class DiscoveryTests
         public Task<TopicNomination> NominateAsync(string model, string instructions, string input, string stage, Artifacts files, CancellationToken ct)
         {
             Interlocked.Increment(ref Nominations);
+            if (ExpectedPrompt.Length > 0 && instructions.Contains(ExpectedPrompt)) Interlocked.Increment(ref ScopeReachedAllJurors);
             if (FailJuror && stage.Contains("juror-3")) throw new HttpRequestException("Fake provider outage");
             if (InvalidFirstNomination && stage == "nominate-juror-1-1")
                 return Task.FromResult(new TopicNomination("scientific-biography", "Test field", [new("Alpha Scientist", [], "query", "Reason", ["invented-id"])]));
@@ -152,6 +171,7 @@ internal static class DiscoveryTests
         public Task<TopicBallot> VoteAsync(string model, string instructions, string input, string stage, Artifacts files, CancellationToken ct)
         {
             Interlocked.Increment(ref Ballots);
+            if (ExpectedPrompt.Length > 0 && instructions.Contains(ExpectedPrompt)) Interlocked.Increment(ref ScopeReachedAllJurors);
             var node = JsonNode.Parse(input)!["context"]!;
             var pool = node["candidates"]!.AsArray().Select(n => new DiscoveryCandidate(n!["Id"]!.GetValue<string>(),
                 n["Name"]!.GetValue<string>(), [], "query", "reason", ["S1-E001", "S2-E001"], [])).ToList();

@@ -5,6 +5,7 @@ namespace GreatIndians.Factory.Discovery;
 public sealed record DiscoverySettings
 {
     public int ChapterCount { get; init; } = 10;
+    public string Prompt { get; init; } = "";
     public string[] JurorModels { get; init; } =
         ["openai/gpt-4.1", "anthropic/claude-sonnet-4.5", "google/gemini-3.1-pro-preview"];
     public int MaxValidationAttempts { get; init; } = 2;
@@ -15,7 +16,7 @@ public sealed record DiscoverySettings
 
     public void Validate()
     {
-        if (ChapterCount is < 1 or > 20 || MaxValidationAttempts is < 1 or > 3
+        if (Prompt is null || Prompt.Length > 12000 || ChapterCount is < 1 or > 20 || MaxValidationAttempts is < 1 or > 3
             || string.IsNullOrWhiteSpace(Criteria) || JurorModels is not { Length: 3 }
             || JurorModels.Any(m => string.IsNullOrWhiteSpace(m) || !m.Contains('/') || m.Any(char.IsWhiteSpace))
             || JurorModels.Distinct(StringComparer.OrdinalIgnoreCase).Count() != 3)
@@ -55,6 +56,7 @@ public sealed record DiscoveryApproval
 {
     public string InputFingerprint { get; init; } = "";
     public string RequestedProfile { get; init; } = "auto";
+    public string Prompt { get; init; } = "";
     public string SubjectListHash { get; init; } = "";
     public string[] JurorModels { get; init; } = [];
     public ApprovedTopic[] Topics { get; init; } = [];
@@ -63,7 +65,7 @@ public sealed record DiscoveryApproval
 
     public void Validate(BookDefinition book)
     {
-        if (JurorModels is not { Length: 3 } || JurorModels.Any(string.IsNullOrWhiteSpace)
+        if (Prompt != book.Discovery.Prompt || JurorModels is not { Length: 3 } || JurorModels.Any(string.IsNullOrWhiteSpace)
             || JurorModels.Distinct(StringComparer.OrdinalIgnoreCase).Count() != 3
             || Topics is null || Topics.Length != book.Subjects.Length
             || Topics.Any(t => t is null)

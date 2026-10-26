@@ -17,6 +17,14 @@ dotnet run -- --book ../books/indian-science.json
 
 Set `OPENROUTER_API_KEY` for a live discovery run. The assistant's regression tests make no paid calls.
 
+Keep scope instructions separate from the printed book title. For example, to exclude ancient scientists:
+
+```powershell
+dotnet run -- discover --title "Legends of Indian Science" --book ../books/indian-science.json --prompt "Select modern Indian scientists whose main work dates from 1800 onwards. Exclude ancient and medieval figures, including Aryabhata, Brahmagupta and Bhaskaracharya. Balance different scientific fields for readers aged 8–12."
+```
+
+The prompt goes to the initial web research and every juror's nomination and ballot. Jurors must reject out-of-scope candidates rather than fill the quota with them. On a successful run it is saved as `discovery.prompt` and reused when `--prompt` is omitted. A changed prompt uses a separate cache, so previous votes cannot silently determine a different scope. Use `--prompt ""` to clear a saved prompt. The title remains unchanged. Scope instructions do not bypass evidence or majority checks.
+
 For a new collection, a title alone is enough:
 
 ```powershell
@@ -31,6 +39,7 @@ Options:
 |---|---|
 | `--title "..."` | Set the book title/scope; optional when an existing `--book` supplies it |
 | `--book path.json` | Existing shared definition to update, or a new definition to create |
+| `--prompt "..."` | Scope instructions: time period, geography, inclusions, exclusions and emphasis; saved for reruns |
 | `--profile scientific-biography` | Explicit content profile; `auto` asks the jury |
 | `--count 10` | Number of chapters, default 10; supported range 1–20 |
 | `--inspect` | Print configuration only; no key, model calls, writes or discovery |
@@ -49,6 +58,7 @@ The optional `discovery` object in a shared book definition controls the jury:
 {
   "discovery": {
     "chapterCount": 10,
+    "prompt": "Modern scientists active from 1800 onwards; exclude ancient and medieval figures.",
     "jurorModels": [
       "openai/gpt-4.1",
       "anthropic/claude-sonnet-4.5",
