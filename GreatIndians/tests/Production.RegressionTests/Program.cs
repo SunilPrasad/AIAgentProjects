@@ -5,6 +5,7 @@ using GreatIndians.Factory.Production;
 using SkiaSharp;
 
 // Native layout and acceptance-gate regression tests. No API client or network calls.
+PageImageContextTests.Run();
 if (args.FirstOrDefault() == "--saved-layout")
 {
     if (args.Length != 3) throw new ArgumentException("--saved-layout <shared-book.json> <saved-production-run-directory>");

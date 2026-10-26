@@ -2,6 +2,20 @@ namespace GreatIndians.Factory.Production;
 
 public static class ProfilePrompts
 {
+    public static string PageReview(ProductionConfig config) => ProductionPrompts.ReviewPage +
+        "\nSOURCE-TYPE RULES: Each image explicitly declares sourceKind. For wikimedia-photograph, judge the actual " +
+        "acceptedPhotograph and its linked manuscript passages, not an imagined or earlier generated-art scene. " +
+        "Authentic Western suits, traditional clothing, neutral studio backgrounds, monochrome and period appearances are valid " +
+        "documentary content. Do not require a blue robe, staged laboratory, equipment, plants, invented poses, painted texture or golden " +
+        "lighting when absent from the accepted photograph. An adult portrait correctly introduces the scientist even when the first " +
+        "paragraph describes birth or childhood. Equipment photos can illustrate the corresponding research and institute photos " +
+        "can illustrate the institute's legacy without claiming to document the founding event. " +
+        "ImagesMatchPassages means factual relevance and accurate placement with those passages, not conformity to an art storyboard. " +
+        "For generated-illustration, the supplied scene remains applicable. Still reject actual wrong identities, unrelated images, " +
+        "destructive cropping, clipped/unreadable text or image/text overlap. Previous image approval does not excuse new layout defects. " +
+        $"Configured photograph review style: {config.ImageReview.PhotographStyle}; " +
+        $"monochrome allowed: {config.ImageReview.AllowBlackAndWhite}; archival wear allowed: {config.ImageReview.AllowArchivalWear}.";
+
     public static string Plan(ProductionConfig config, string style)
     {
         if (config.BookId.Length == 0 && config.Profile == "biography") return ProductionPrompts.Plan(style, config.IllustrationCount);

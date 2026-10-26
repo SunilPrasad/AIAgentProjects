@@ -105,6 +105,7 @@ internal static class GenericBookTests
         Check(File.Exists(final) && modelHandler.ImageCalls == 0, "webOnly bought generated art or failed to deliver.");
         Check(modelHandler.SawPhotoInventory, "Planner did not receive available photographs before describing scenes.");
         Check(modelHandler.PhotoReviewHadNoArtBrief, "Photograph review received speculative generated character/scene instructions.");
+        Check(modelHandler.PhotoPagesHadNoArtBrief && modelHandler.PhotoPageContexts > 0, "Final page reviewer inherited a generated illustration brief for a photograph.");
         var run = Path.GetDirectoryName(final)!;
         var layout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(run, "layout-1.json")));
         Check(layout.Text.Any(t => t.Kind == "image-credit" && t.Text.Contains("Fixture photographer")), "Photographer credit missing from PDF.");
@@ -132,6 +133,17 @@ internal static class GenericBookTests
         Check(modelHandler.Calls == modelCalls && webHandler.Calls == networkCalls, "Identical web/image/page work was not cached.");
         ChapterPdfLayout.RenderPages(final, Path.Combine(run, "offline-verified-pages"));
         Console.WriteLine("PASS web-only full pipeline: photo instead of generated image; PDF/EPUB credits; exact story; cache-only rerun");
+
+        modelHandler.RejectPageSemantics = true;
+        int priorPageCalls = modelHandler.PageReviewCalls;
+        bool semanticStopped = false;
+        string semanticRoot = Path.Combine(root, "semantic-page-failure");
+        try { await pipeline.RunAsync(manuscript, semanticRoot, CancellationToken.None); }
+        catch (ProductionReviewException) { semanticStopped = true; }
+        Check(semanticStopped && modelHandler.PageReviewCalls == priorPageCalls + 1
+            && Directory.GetFiles(semanticRoot, "*_print.pdf", SearchOption.AllDirectories).Length == 0,
+            "Semantic rejection purchased more page reviews/layout retries or promoted a final PDF.");
+        modelHandler.RejectPageSemantics = false;
 
         using var noWebHttp = new HttpClient(new WebHandler { Empty = true });
         using var noWeb = new CommonsImageSource(noWebHttp);
@@ -215,6 +227,8 @@ internal static class GenericBookTests
         public bool RejectWebPhoto;
         public bool SawPhotoInventory;
         public bool PhotoReviewHadNoArtBrief;
+        public bool PhotoPagesHadNoArtBrief = true, RejectPageSemantics;
+        public int PhotoPageContexts, PageReviewCalls;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
@@ -237,12 +251,22 @@ internal static class GenericBookTests
                     PhotoReviewHadNoArtBrief = !photoInput.RootElement.TryGetProperty("character", out _)
                         && !photoInput.RootElement.TryGetProperty("scene", out _);
                 }
+                if (name == "PageReview")
+                {
+                    PageReviewCalls++;
+                    using var pageInput = JsonDocument.Parse(json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text").GetString()!);
+                    foreach (var image in pageInput.RootElement.GetProperty("illustrations").EnumerateArray())
+                        if (image.TryGetProperty("sourceKind", out var kind) && kind.GetString() == "wikimedia-photograph")
+                        { PhotoPageContexts++; PhotoPagesHadNoArtBrief &= !image.TryGetProperty("Scene", out _); }
+                }
                 object answer = name switch
                 {
                     "IllustrationPlan" => Plan(manuscript),
                     "ImageReview" => Review(),
                     "WebImageReview" => new WebImageReview(!RejectWebPhoto, !RejectWebPhoto, Review()),
-                    "PageReview" => new PageReview(true, true, true, true, true, true, true, true, true, [], []),
+                    "PageReview" => RejectPageSemantics
+                        ? new PageReview(false, true, true, true, true, true, true, false, true, ["Offline semantic rejection"], [])
+                        : new PageReview(true, true, true, true, true, true, true, true, true, [], []),
                     _ => throw new InvalidOperationException("Unexpected schema " + name)
                 };
                 response = new { choices = new[] { new { finish_reason = "stop", message = new { content = JsonSerializer.Serialize(answer) } } } };

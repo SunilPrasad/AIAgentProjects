@@ -142,6 +142,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 var pages = ChapterPdfLayout.RenderPages(preview, Path.Combine(root, $"pages-{attempt}"));
                 if (pages.Count != layout.PageCount) throw new ProductionReviewException("Not every PDF page was rendered.");
                 var reviews = new List<PageReview>();
+                var examinedPages = new List<int>();
                 var reviewedPages = PagesForVisualReview(layout, config.PageReviewScope);
                 if (reviewedPages.Count < pages.Count)
                     log.LogInformation("[PDF][LAYOUT] Visual review of pages {Pages}; text-only pages rely on the deterministic text, overflow and sparse-page checks",
@@ -152,7 +153,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     if (!reviewedPages.Contains(number)) continue;
                     var review = await api.JsonAsync<PageReview>($"layout-{attempt}-page-{number:D3}",
                         config.PageReviewModel.Length > 0 ? config.PageReviewModel : config.VisionModel,
-                        ProductionPrompts.ReviewPage, Data.Write(new
+                        ProfilePrompts.PageReview(config), Data.Write(new
                         {
                             manuscript.Subject, manuscript.Title, pageNumber = number,
                             visualStyle = ProductionDesign.Description(config),
@@ -160,17 +161,22 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                             textVerification = checks,
                             pageFlow = PageFlowContext.From(layout, number),
                             illustrations = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id))
-                                .Select(a => new { a.Scene, a.Review.OverallScore, a.Review.Suggestions,
-                                    passages = manuscript.Paragraphs.Where(p => a.Scene.ParagraphIds.Contains(p.Id)) }),
+                                .Select(a => PageImageContext.For(manuscript, a)),
                             pdfSha256 = layout.PdfSha256
                         }), [pages[index]], files, ct);
                     reviews.Add(review);
+                    examinedPages.Add(number);
                     notes.AddRange(review.EditorialNotes);
+                    if (!review.Passes && !PageImageContext.CanFixByRelayout(review))
+                    {
+                        log.LogWarning("[PDF][LAYOUT][STOP] Page {Page} reported an identity/passage issue; resizing cannot fix it. Skipping further paid page reviews and layout retries.", number);
+                        break;
+                    }
                 }
-                await files.Save($"page-reviews-{attempt}.json", Data.Write(new { layout.PdfSha256, config.PageReviewScope, reviewedPages, reviews }));
+                await files.Save($"page-reviews-{attempt}.json", Data.Write(new { layout.PdfSha256, config.PageReviewScope, plannedPages = reviewedPages, reviewedPages = examinedPages, reviews }));
                 if (reviews.Any(r => !r.Passes))
                 {
-                    if (attempt < config.MaxLayoutAttempts) continue;
+                    if (attempt < config.MaxLayoutAttempts && reviews.Where(r => !r.Passes).All(PageImageContext.CanFixByRelayout)) continue;
                     throw new ProductionReviewException("Rendered page review failed: " +
                         string.Join("; ", reviews.Where(r => !r.Passes).Select(Data.Write)));
                 }
