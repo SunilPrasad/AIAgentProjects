@@ -81,12 +81,16 @@ public sealed record ProductionConfig
 
 public sealed record TextRun(string Text, bool Italic = false, bool Bold = false);
 public sealed record ManuscriptParagraph(string Id, string OriginalMarkdown, string Text, List<TextRun> Runs);
+public sealed record ManuscriptHeading(string Id, int Level, string Text, string BeforeParagraphId);
 public sealed record Manuscript(
     string SourcePath, string SourceSha256, string Title, string Subject, int ChapterNumber,
     List<ManuscriptParagraph> Paragraphs, List<string> SuppressedHeadings)
 {
     public string SubjectId { get; init; } = "";
     public string Profile { get; init; } = "biography";
+    public List<ManuscriptHeading> Headings { get; init; } = [];
+    public string OrderedText() => Title + " " + string.Join(" ", Paragraphs.SelectMany(p =>
+        Headings.Where(h => h.BeforeParagraphId == p.Id).Select(h => h.Text).Append(p.Text)));
 }
 
 public sealed record CharacterReference(

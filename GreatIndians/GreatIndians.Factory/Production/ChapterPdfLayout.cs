@@ -204,7 +204,7 @@ public static class ChapterPdfLayout
             y += height;
         }
 
-        void DrawArtwork(AcceptedArtwork art)
+        void DrawArtwork(AcceptedArtwork art, double followingTextHeight)
         {
             if (ManuscriptReader.HashFile(art.Path) != art.Sha256 || !art.Review.Accepts(config.MinimumImageScore))
             {
@@ -216,7 +216,7 @@ public static class ChapterPdfLayout
             // when a local candidate asks for smaller art; never crop to the generated-scene ratio.
             if (art.Credit is not null) scale = Math.Max(scale, Math.Max(100d / art.PixelWidth, 90d / art.PixelHeight));
             scale = Math.Min(scale, 72.0 / config.MinimumImageDpi);
-            double availableHeight = Height - Bottom - y - 14 - lineHeight * 2;
+            double availableHeight = Height - Bottom - y - 14 - followingTextHeight;
             double naturalHeight = art.PixelHeight * scale;
             // Fit at this narrative break when a modest contain-resize avoids a large hole.
             if (availableHeight < naturalHeight && availableHeight >= Math.Max(110, naturalHeight * 0.72))
@@ -227,7 +227,7 @@ public static class ChapterPdfLayout
             {
                 throw new InvalidDataException($"Artwork {art.Scene.Id} cannot be printed at a useful size at 300 PPI.");
             }
-            if (y + height + 14 + lineHeight * 2 > Height - Bottom)
+            if (y + height + 14 + followingTextHeight > Height - Bottom)
             {
                 NewPage();
             }
@@ -251,11 +251,27 @@ public static class ChapterPdfLayout
 
         foreach (var paragraph in manuscript.Paragraphs)
         {
+            var lines = Wrap(paragraph.Runs, config.FontSize, right - left);
+            var headings = manuscript.Headings.Where(h => h.BeforeParagraphId == paragraph.Id).Select(h => new
+            {
+                Heading = h, Lines = Wrap([new TextRun(h.Text, Bold: true)], ProductionDesign.HeadingSize, right - left)
+            }).ToList();
+            double headingHeight = headings.Sum(h => 8 + h.Lines.Count * ProductionDesign.HeadingLeading + 5);
+            double followingTextHeight = headingHeight + lineHeight * Math.Min(2, lines.Count);
+            if (followingTextHeight > Height - Bottom - Top)
+                throw new InvalidDataException("Section heading and following text cannot fit safely on one page.");
             foreach (var art in artwork.Where(art => art.Scene.InsertBeforeParagraphId == paragraph.Id))
             {
-                DrawArtwork(art);
+                DrawArtwork(art, followingTextHeight);
             }
-            var lines = Wrap(paragraph.Runs, config.FontSize, right - left);
+            if (headings.Count > 0 && y + followingTextHeight > Height - Bottom) NewPage();
+            foreach (var heading in headings)
+            {
+                y += 8;
+                foreach (var line in heading.Lines)
+                    DrawLine(line, "heading", heading.Heading.Id, ProductionDesign.HeadingSize, ProductionDesign.HeadingLeading, ink);
+                y += 5;
+            }
             int next = 0;
             while (next < lines.Count)
             {
@@ -334,8 +350,8 @@ public static class ChapterPdfLayout
             issues.Add("PDF bytes changed after layout.");
         }
         var expected = Data.Normalize(string.Join(" ", manifest.Text
-            .Where(item => item.Kind is "title" or "paragraph").Select(item => item.Text)));
-        var source = Data.Normalize(manuscript.Title + " " + string.Join(" ", manuscript.Paragraphs.Select(p => p.Text)));
+            .Where(item => item.Kind is "title" or "heading" or "paragraph").Select(item => item.Text)));
+        var source = Data.Normalize(manuscript.OrderedText());
         if (expected != source)
         {
             issues.Add("Layout text differs from the original manuscript or paragraph order.");
@@ -347,6 +363,15 @@ public static class ChapterPdfLayout
             {
                 issues.Add($"Paragraph {paragraph.Id} changed or is missing.");
             }
+        }
+        foreach (var heading in manuscript.Headings)
+        {
+            var placed = manifest.Text.Where(t => t.Kind == "heading" && t.ParagraphId == heading.Id).ToList();
+            if (Data.Normalize(string.Join(" ", placed.Select(t => t.Text))) != Data.Normalize(heading.Text))
+                issues.Add($"Section heading {heading.Id} changed or is missing.");
+            var following = manifest.Text.FirstOrDefault(t => t.Kind == "paragraph" && t.ParagraphId == heading.BeforeParagraphId);
+            if (following is null || placed.Any(t => t.Page != following.Page || t.Y >= following.Y))
+                issues.Add($"Section heading {heading.Id} is separated from its following paragraph.");
         }
 
         var actualNarrative = new List<string>();
@@ -367,6 +392,7 @@ public static class ChapterPdfLayout
                     bool bold = false;
                     if (Math.Abs(size - ProductionDesign.BodySize) < 0.01) expectedColour = ProductionDesign.Body;
                     else if (Math.Abs(size - ProductionDesign.TitleSize) < 0.01) { expectedColour = ProductionDesign.Title; bold = true; }
+                    else if (Math.Abs(size - ProductionDesign.HeadingSize) < 0.01) { expectedColour = ProductionDesign.Body; bold = true; }
                     else if (Math.Abs(size - ProductionDesign.ChapterSize) < 0.01) { expectedColour = ProductionDesign.Gold; bold = true; }
                     else if (Math.Abs(size - ProductionDesign.PageNumberSize) < 0.01) expectedColour = ProductionDesign.PageNumber;
                     else return true;
@@ -398,7 +424,7 @@ public static class ChapterPdfLayout
                 if (narrative.EndsWith(" " + footer, StringComparison.Ordinal))
                     narrative = narrative[..^(footer.Length + 1)];
                 bool creditPage = manifest.Text.Any(t => t.Page == page.Number && t.Kind == "image-credit");
-                if (creditPage && manifest.Text.Any(t => t.Page == page.Number && t.Kind is "paragraph" or "title"))
+                if (creditPage && manifest.Text.Any(t => t.Page == page.Number && t.Kind is "paragraph" or "title" or "heading"))
                     issues.Add($"Image credits must be separate from source narrative on page {page.Number}.");
                 actualNarrative.Add(creditPage ? "" : narrative);
                 if (page.Letters.Any(letter => letter.BoundingBox.Left < 18 || letter.BoundingBox.Right > Width - 18

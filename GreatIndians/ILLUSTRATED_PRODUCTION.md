@@ -33,7 +33,7 @@ Paths and model choices are in `production.json`. `--config C:\path\production.j
 
 ## Production and review
 
-1. Parse the saved manuscript into paragraphs with stable IDs and preserve inline italics/bold. Retain an unchanged Markdown snapshot and source SHA-256. Suppress secondary headings only in the layout and list them in QA; reject unsupported markup rather than silently losing content.
+1. Parse the saved manuscript into paragraphs with stable IDs and preserve inline italics/bold. Retain an unchanged Markdown snapshot and source SHA-256. Preserve original section headings at 14pt bold, left-aligned, beneath the visual hierarchy of the 22pt main title. Keep headings with the following paragraph, verify their text/order in PDF and EPUB, and list them in QA. Reject unsupported markup rather than silently losing content. The main chapter title appears only once.
 2. Read the complete manuscript to plan 4–7 distinct passage-linked illustrations and a subject-specific character reference. Validate the exact subject, ordered paragraph anchors and aspect ratios.
 
    The application binds scene identity from the validated manuscript/character, links an unanchored opening portrait to P001, and derives invalid layout positions from the scene's existing source paragraph IDs. These metadata adjustments are logged in `reviews/plan-*-validation.json`; scene descriptions and manuscript text remain unchanged. A different historical identity or nonexistent evidence paragraph still fails validation. The original model responses remain in provenance, and compatible cached plans can be reused without another model request.

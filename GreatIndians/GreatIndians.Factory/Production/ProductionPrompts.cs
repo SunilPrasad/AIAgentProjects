@@ -90,7 +90,10 @@ public static class ProductionPrompts
         "Review the actual rendered PDF page image as a children's-book production proof. The supplied page text is the authoritative " +
         "manuscript content for this page. Do not rewrite it or ask for historical prose changes. Record any factual/editorial concern " +
         "in editorialNotes separately. Check legibility, complete lines, no overflow/clipping, no image/text overlap, only one chapter headline " +
-        "on the opening page and no secondary/running headlines elsewhere, correct historical subject, no cropped heads or key objects, " +
+        "on the opening page, no repeated main title or running headlines, correct historical subject, no cropped heads or key objects, " +
+        "Original manuscript section headings are required: smaller left-aligned 14pt bold paragraph headings, compared with the 22pt main title. " +
+        "These section headings may appear on later pages and do not violate oneHeadlineOnly, which means one MAIN chapter title. " +
+        "Keep each section heading with the start of its following paragraph; reject an orphan heading at the foot of a page. " +
         "no unwanted text inside art, scene alignment, and the correct page number. Manuscript formulas are typeset text, not image lettering. " +
         "The deterministic PDF text comparison handles exact spelling and paragraph order; inspect visible presentation as well. " +
         "PAGINATION: pageText contains only the lines intentionally laid out on the current page. A sentence or paragraph may " +

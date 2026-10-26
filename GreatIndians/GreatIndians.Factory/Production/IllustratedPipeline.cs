@@ -403,7 +403,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             "A passing PDF requires exact selectable text comparison, paragraph order, embedded fonts, 6 × 9 inch trim, " +
             "safe placement, 300+ PPI artwork, independent review of every artwork and every rendered page. " +
             "AI review can miss errors; inspect the retained page proofs before publication.\n\n" +
-            "Secondary headings suppressed in the layout only:\n" + string.Join("\n", manuscript.SuppressedHeadings.Select(h => "- " + h.Replace("\n", " "))) +
+            $"Original section headings retained at {ProductionDesign.HeadingSize}pt bold:\n" + string.Join("\n", manuscript.Headings.Select(h => "- " + h.Text.Replace("\n", " "))) +
             "\n\nEditorial notes (manuscript never rewritten):\n" + string.Join("\n", notes.Distinct().Select(n => "- " + n)) +
             "\n\n## Cost\n\n" + cost.Markdown() +
             "\nPublishing checks still required: full-book assembly, final book page count/gutter, cover/spine, KDP preview and physical proof. " +

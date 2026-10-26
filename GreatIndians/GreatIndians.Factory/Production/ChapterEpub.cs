@@ -15,6 +15,8 @@ public static class ChapterEpub
             foreach (var image in artwork.Where(a => a.Scene.InsertBeforeParagraphId == paragraph.Id))
                 body.Add(new XElement(html + "figure", new XElement(html + "img",
                     new XAttribute("src", "images/" + image.Scene.Id + ".png"), new XAttribute("alt", image.Scene.AltText))));
+            foreach (var heading in manuscript.Headings.Where(h => h.BeforeParagraphId == paragraph.Id))
+                body.Add(new XElement(html + ("h" + heading.Level), new XAttribute("id", heading.Id), heading.Text));
             var p = new XElement(html + "p", new XAttribute("id", paragraph.Id));
             foreach (var run in paragraph.Runs)
             {
@@ -106,6 +108,10 @@ public static class ChapterEpub
             if (paragraphs.Count != manuscript.Paragraphs.Count || paragraphs.Where((p, i) => p.Value != manuscript.Paragraphs[i].Text).Any()
                 || document.Descendants(html + "h1").Single().Value != manuscript.Title)
                 throw new ProductionReviewException("EPUB selectable text differs from the manuscript.");
+            var readingText = document.Descendants(html + "body").Single().Elements()
+                .Where(e => e.Name.LocalName is "h1" or "h2" or "h3" or "h4" or "h5" or "h6" or "p").Select(e => e.Value);
+            if (Data.Normalize(string.Join(" ", readingText)) != Data.Normalize(manuscript.OrderedText()))
+                throw new ProductionReviewException("EPUB section headings or reading order differ from the manuscript.");
             if (document.Descendants(html + "img").Any(image => string.IsNullOrWhiteSpace(image.Attribute("alt")?.Value)
                 || archive.GetEntry("OEBPS/" + image.Attribute("src")!.Value) is null))
                 throw new ProductionReviewException("EPUB image reference or alternative text is missing.");

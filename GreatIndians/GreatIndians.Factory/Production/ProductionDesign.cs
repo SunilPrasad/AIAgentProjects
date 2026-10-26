@@ -5,12 +5,14 @@ namespace GreatIndians.Factory.Production;
 /// <summary>Author's master design tokens; shared by layout, EPUB and review prompts.</summary>
 public static class ProductionDesign
 {
-    public const string Version = "profiled-credits-v5";
+    public const string Version = "retained-section-headings-v6";
     public const string FontFamily = "Liberation Serif";
     public const string FontPrefix = "LiberationSerif-";
     public const double BodySize = 12.1;
     public const double DefaultLeading = 17;
     public const double TitleSize = 22;
+    public const double HeadingSize = 14;
+    public const double HeadingLeading = 18;
     public const double ChapterSize = 10;
     public const double PageNumberSize = 9;
     public const string Paper = "#FFFDF6";
@@ -32,6 +34,7 @@ public static class ProductionDesign
         body{font-family:'Liberation Serif',serif;font-size:1em;line-height:1.405;margin:5%;background:{{Paper}};color:{{Body}};}
         p{margin:0 0 1em;}
         h1{font-size:1.82em;text-align:center;color:{{Title}};border-top:1px solid {{Gold}};padding-top:1em;}
+        h2,h3,h4,h5,h6{font-size:1.157em;font-weight:bold;color:{{Body}};line-height:1.286;margin:1em 0 .4em;break-after:avoid;page-break-after:avoid;}
         figure{margin:1em 0;break-inside:avoid;}
         img{max-width:100%;height:auto;display:block;margin:auto;}
         """;
@@ -43,6 +46,7 @@ public static class ProductionDesign
         => $"Ages {config.AudienceMinAge}–{config.AudienceMaxAge}. 432 × 648pt full-colour pages; warm ivory {Paper}. " +
             $"Body: {FontFamily} Regular {BodySize}pt, ink {Body}, leading {BodySize * config.LineSpacing:F2}pt. " +
             $"One centred original chapter title: {FontFamily} Bold {TitleSize}pt {Title}. " +
+            $"Retained section headings: left-aligned {FontFamily} Bold {HeadingSize}pt {Body}, {HeadingLeading}pt leading, kept with their following paragraph. " +
             $"Chapter number: Bold {ChapterSize}pt {Gold}. Page numbers: Regular {PageNumberSize}pt {PageNumber}. " +
             "Embedded fonts, selectable unchanged paragraphs, mirrored margins and a safe gutter. " +
             "Generated illustrations: vibrant cinematic nonfiction children's storybook art with rich watercolour-and-gouache textures, " +

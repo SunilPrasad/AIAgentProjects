@@ -17,6 +17,8 @@ public static class ManuscriptReader
         string? title = null;
         var paragraphs = new List<ManuscriptParagraph>();
         var omitted = new List<string>();
+        var headings = new List<ManuscriptHeading>();
+        var pendingHeadings = new List<(int Level, string Text)>();
 
         foreach (var block in document)
         {
@@ -33,7 +35,9 @@ public static class ManuscriptReader
                 }
                 else
                 {
-                    omitted.Add(markdown[heading.Span.Start..(heading.Span.End + 1)]);
+                    if (title is null || string.IsNullOrWhiteSpace(text))
+                        throw new InvalidDataException("Section headings must follow the main title and contain text.");
+                    pendingHeadings.Add((heading.Level, text));
                 }
             }
             else if (block is ParagraphBlock paragraph)
@@ -43,6 +47,9 @@ public static class ManuscriptReader
                     throw new InvalidDataException("A main chapter headline is required before the narrative.");
                 }
                 var runs = ExtractRuns(paragraph.Inline);
+                foreach (var section in pendingHeadings)
+                    headings.Add(new ManuscriptHeading($"H{headings.Count + 1:D3}", section.Level, section.Text, $"P{paragraphs.Count + 1:D3}"));
+                pendingHeadings.Clear();
                 paragraphs.Add(new ManuscriptParagraph(
                     $"P{paragraphs.Count + 1:D3}", markdown[paragraph.Span.Start..(paragraph.Span.End + 1)],
                     Plain(runs), runs));
@@ -53,6 +60,8 @@ public static class ManuscriptReader
             }
         }
 
+        if (pendingHeadings.Count > 0)
+            throw new InvalidDataException("A section heading must have a following narrative paragraph.");
         if (string.IsNullOrWhiteSpace(title) || paragraphs.Count < config.IllustrationCount)
         {
             throw new InvalidDataException("A title and enough narrative paragraphs for the requested illustrations are required.");
@@ -73,6 +82,7 @@ public static class ManuscriptReader
             subjectName, Array.IndexOf(config.Subjects, subjectName) + 1, paragraphs, omitted)
         {
             SubjectId = config.SubjectDefinitions.FirstOrDefault(s => s.Name == subjectName)?.Id ?? "",
+            Headings = headings,
             Profile = config.Profile
         };
     }

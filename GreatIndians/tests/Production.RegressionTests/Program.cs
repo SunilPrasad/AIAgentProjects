@@ -5,6 +5,8 @@ using GreatIndians.Factory.Production;
 using SkiaSharp;
 
 // Native layout and acceptance-gate regression tests. No API client or network calls.
+HeadingLayoutTests.Run();
+if (args.Contains("--headings-only")) return;
 await CostMeterTests.RunAsync();
 await DiscoveryTests.RunAsync();
 if (args.Contains("--discovery-only")) return;
@@ -45,9 +47,11 @@ if (args.Length == 0)
             "This is a **layout test**, with *italic words*, a long sentence and ordinary punctuation. " +
             "The illustrations are geometric placeholders; they make no historical claims. " +
             "Every printed line must stay selectable, readable and inside the safe margins. " +
-            "The layout may resize an illustration proportionally but must never shorten this paragraph to fit a page.");
+            "The layout may resize an illustration proportionally but must never shorten this paragraph to fit a page.").ToArray();
         File.WriteAllText(Path.Combine(input, $"{index + 1:D2}-fixture.md"),
-            $"# {config.Subjects[index]} — Offline layout fixture\n\n" + string.Join("\n\n", paragraphs));
+            $"# {config.Subjects[index]} — Offline layout fixture\n\n" + string.Join("\n\n", paragraphs.Select((p, position) =>
+                position is 0 or 1 || position == paragraphs.Length / 2 || position == paragraphs.Length - 2
+                    ? $"## Section {position + 1}: A Smaller Paragraph Heading\n\n{p}" : p)));
     }
 }
 var fixtureReview = new ImageReview(true, true, true, true, true, true, true, true, true, true, [])

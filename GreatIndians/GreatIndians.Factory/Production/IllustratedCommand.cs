@@ -58,7 +58,7 @@ public static class IllustratedCommand
         if (inspect)
         {
             Console.WriteLine($"Design {ProductionDesign.Version}: {ProductionDesign.Description(config)}");
-            foreach (var m in manuscripts) Console.WriteLine($"{m.Subject}: {m.Paragraphs.Count} paragraphs; {m.SuppressedHeadings.Count} secondary headings suppressed in layout; SHA-256={m.SourceSha256}; source={m.SourcePath}");
+            foreach (var m in manuscripts) Console.WriteLine($"{m.Subject}: {m.Paragraphs.Count} paragraphs; {m.Headings.Count} section headings retained at {ProductionDesign.HeadingSize}pt; SHA-256={m.SourceSha256}; source={m.SourcePath}");
             return 0;
         }
         var key = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
