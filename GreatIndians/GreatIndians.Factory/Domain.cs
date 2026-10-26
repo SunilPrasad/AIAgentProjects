@@ -8,6 +8,10 @@ namespace GreatIndians.Factory;
 
 public sealed record BookConfig
 {
+    public string BookId { get; init; } = "";
+    public string Profile { get; init; } = "biography";
+    public SubjectDefinition[] SubjectDefinitions { get; init; } = [];
+    public string ChapterName(int index) => $"{index + 1:D2}-{(SubjectDefinitions.Length > index ? SubjectDefinitions[index].Id : Data.Slug(Personalities[index]))}";
     public string BookTitle { get; init; } = "Great Indians Who Changed History";
     public int AudienceMinAge { get; init; } = 8;
     public int AudienceMaxAge { get; init; } = 12;
@@ -29,7 +33,11 @@ public sealed record BookConfig
     public List<string> AllowedSourceDomains { get; init; } = [];
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(BookTitle) || Personalities is null || Personalities.Count == 0 || Personalities.Any(string.IsNullOrWhiteSpace)
+        if (!ContentProfiles.All.Contains(Profile) || Personalities is null || SubjectDefinitions is null
+            || SubjectDefinitions.Length > 0 && (SubjectDefinitions.Length != Personalities.Count
+                || SubjectDefinitions.Where((s, i) => s is null || s.Name != Personalities[i]
+                    || string.IsNullOrWhiteSpace(s.Id) || !Regex.IsMatch(s.Id, "^[a-z0-9]+(?:-[a-z0-9]+)*$")).Any())
+            || string.IsNullOrWhiteSpace(BookTitle) || Personalities is null || Personalities.Count == 0 || Personalities.Any(string.IsNullOrWhiteSpace)
             || Personalities.Distinct(StringComparer.OrdinalIgnoreCase).Count() != Personalities.Count
             || AudienceMinAge < 1 || AudienceMaxAge < AudienceMinAge || ChapterWordCountMin < 1
             || ChapterWordCountMax < ChapterWordCountMin || MaxReviewPasses is < 1 or > 10 || MaxAttempts is < 1 or > 5

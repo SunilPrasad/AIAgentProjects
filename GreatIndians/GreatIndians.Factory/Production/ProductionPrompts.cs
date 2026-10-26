@@ -74,6 +74,9 @@ public static class ProductionPrompts
         "but false values for these soft criteria alone do not veto an otherwise acceptable scored image. " +
         "Set approved according to the hard flags and supplied numerical threshold, not perfection. Return only the required JSON.";
     public const string ReviewPage =
+        "Terminal image-credit pages are allowed. Credit text is not source narrative and does not need a chapter headline. " +
+        "Real web photographs may have photographic style and authentic incidental inscriptions; do not require painterly " +
+        "finish or removal of real inscriptions. Reject added watermarks, wrong subjects and important cropping. " +
         "Illustrations have already passed the configured scored image review. Do not reject a page for accepted soft compromises " +
         "in brushwork, contour lines, fabric shading, apparent adult age, hairstyle or clothing shades. " +
         "The opening image establishes identity; do not reimpose the speculative written appearance. " +

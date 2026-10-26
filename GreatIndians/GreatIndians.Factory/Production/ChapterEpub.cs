@@ -25,6 +25,17 @@ public static class ChapterEpub
             }
             body.Add(p);
         }
+        var credited = artwork.Where(a => a.Credit is not null).ToList();
+        if (credited.Count > 0)
+        {
+            var credits = new XElement(html + "div", new XAttribute("class", "image-credits"),
+                new XElement(html + "strong", "Image credits"));
+            foreach (var art in credited)
+                credits.Add(new XElement(html + "div", art.Credit!.Text(art.Scene.Id), " ",
+                    new XElement(html + "a", new XAttribute("href", art.Credit.SourceUrl), "Source"), " · ",
+                    new XElement(html + "a", new XAttribute("href", art.Credit.LicenseUrl), "License")));
+            body.Add(credits);
+        }
         var chapter = new XDocument(new XElement(html + "html", new XAttribute(XNamespace.Xml + "lang", "en"),
             new XElement(html + "head", new XElement(html + "title", manuscript.Title),
                 new XElement(html + "link", new XAttribute("rel", "stylesheet"), new XAttribute("href", "style.css"))), body));
@@ -47,6 +58,7 @@ public static class ChapterEpub
                 new XElement(dc + "title", manuscript.Title), new XElement(dc + "language", "en"),
                 new XElement(opf + "meta", new XAttribute("property", "dcterms:modified"), "2026-01-01T00:00:00Z")),
             manifest, new XElement(opf + "spine", new XElement(opf + "itemref", new XAttribute("idref", "chapter")))));
+        if (!string.IsNullOrWhiteSpace(config.Author)) package.Root!.Element(opf + "metadata")!.Add(new XElement(dc + "creator", config.Author));
         XNamespace epub = "http://www.idpf.org/2007/ops";
         var nav = new XDocument(new XElement(html + "html", new XAttribute(XNamespace.Xml + "lang", "en"),
             new XElement(html + "head", new XElement(html + "title", "Contents")),

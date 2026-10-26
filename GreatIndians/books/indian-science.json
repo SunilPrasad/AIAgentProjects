@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "id": "indian-science",
+  "title": "Legends of Indian Science",
+  "subtitle": "10 illustrated chapters for readers ages 8-12",
+  "author": "Sunil Bhardwaj",
+  "profile": "scientific-biography",
+  "audienceMinAge": 8,
+  "audienceMaxAge": 12,
+  "language": "British English",
+  "outputRoot": "../output/books",
+  "subjects": [
+    {
+      "id": "srinivasa-ramanujan",
+      "name": "Srinivasa Ramanujan",
+      "aliases": [],
+      "imageQuery": "Srinivasa Ramanujan portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "c-v-raman",
+      "name": "C. V. Raman",
+      "aliases": [],
+      "imageQuery": "C. V. Raman portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "satyendra-nath-bose",
+      "name": "Satyendra Nath Bose",
+      "aliases": [],
+      "imageQuery": "Satyendra Nath Bose portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "jagadish-chandra-bose",
+      "name": "Jagadish Chandra Bose",
+      "aliases": [],
+      "imageQuery": "Jagadish Chandra Bose portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "meghnad-saha",
+      "name": "Meghnad Saha",
+      "aliases": [],
+      "imageQuery": "Meghnad Saha portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "subrahmanyan-chandrasekhar",
+      "name": "Subrahmanyan Chandrasekhar",
+      "aliases": [],
+      "imageQuery": "Subrahmanyan Chandrasekhar portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "e-k-janaki-ammal",
+      "name": "E. K. Janaki Ammal",
+      "aliases": [],
+      "imageQuery": "E. K. Janaki Ammal portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "m-s-swaminathan",
+      "name": "M. S. Swaminathan",
+      "aliases": [],
+      "imageQuery": "M. S. Swaminathan portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "asima-chatterjee",
+      "name": "Asima Chatterjee",
+      "aliases": [],
+      "imageQuery": "Asima Chatterjee portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "har-gobind-khorana",
+      "name": "Har Gobind Khorana",
+      "aliases": [],
+      "imageQuery": "Har Gobind Khorana portrait",
+      "commonsFiles": []
+    }
+  ],
+  "writing": {
+    "styleBible": "../GreatIndians.Factory/profiles/common-style.md",
+    "chapterWordCountMin": 600,
+    "chapterWordCountMax": 900,
+    "writerModel": "openai/gpt-4.1",
+    "researchModel": "openai/gpt-4.1",
+    "reviewerModel": "anthropic/claude-sonnet-4.5",
+    "maxReviewPasses": 3,
+    "maxAttempts": 3,
+    "minSources": 2,
+    "minClaims": 8,
+    "maxSources": 6
+  },
+  "production": {
+    "illustrationStyle": "../GreatIndians.Factory/profiles/storybook-art.md",
+    "styleReferenceImage": "../GreatIndians.Factory/assets/reference/art-style-reference.png",
+    "imageMode": "preferWeb",
+    "maxWebCandidates": 3,
+    "illustrationCount": 4,
+    "minimumImageScore": 70,
+    "maxImageAttempts": 3,
+    "maxLayoutAttempts": 2,
+    "createEpub": true
+  }
+}

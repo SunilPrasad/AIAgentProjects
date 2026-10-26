@@ -7,6 +7,8 @@ using SkiaSharp;
 // Native layout and acceptance-gate regression tests. No API client or network calls.
 var root = Path.Combine(AppContext.BaseDirectory, "proofs", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
+await GenericBookTests.RunAsync(root);
+if (args.Contains("--generic-only")) return;
 var config = new ProductionConfig();
 var flowFixture = new LayoutManifest(432, 648, 54.96, 3, [],
 [

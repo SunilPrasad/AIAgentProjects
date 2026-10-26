@@ -3,7 +3,7 @@ namespace GreatIndians.Factory.Production;
 /// <summary>Binds production metadata without rewriting any manuscript or scene description.</summary>
 public static class IllustrationPlanBinding
 {
-    public static IllustrationPlan Bind(Manuscript manuscript, IllustrationPlan plan, List<string> adjustments)
+    public static IllustrationPlan Bind(Manuscript manuscript, IllustrationPlan plan, List<string> adjustments, string[]? subjects = null)
     {
         // Never repair a different historical identity into an apparently valid plan.
         if (plan.Character?.Name != manuscript.Subject || plan.Scenes is null)
@@ -29,7 +29,7 @@ public static class IllustrationPlanBinding
             var subject = scene.Subject;
             // The model often supplies a scene topic here. Identity comes from the validated character
             // and manuscript, while the original topic remains in the retained raw response.
-            if (subject != manuscript.Subject && !ContainsOtherSubject(subject, manuscript.Subject))
+            if (subject != manuscript.Subject && !ContainsOtherSubject(subject, manuscript.Subject, subjects))
             {
                 subject = manuscript.Subject;
                 adjustments.Add($"{scene.Id}: bound subject metadata to {manuscript.Subject}.");
@@ -57,7 +57,7 @@ public static class IllustrationPlanBinding
         return plan with { Scenes = scenes };
     }
 
-    private static bool ContainsOtherSubject(string? value, string expected)
-        => new ProductionConfig().Subjects.Where(subject => subject != expected)
+    private static bool ContainsOtherSubject(string? value, string expected, string[]? subjects)
+        => (subjects ?? new ProductionConfig().Subjects).Where(subject => subject != expected)
             .Any(subject => value?.Contains(subject, StringComparison.OrdinalIgnoreCase) == true);
 }

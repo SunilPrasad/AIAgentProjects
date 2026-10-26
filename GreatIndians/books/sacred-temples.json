@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "id": "sacred-temples",
+  "title": "Legends of India's Sacred Temples",
+  "subtitle": "10 illustrated chapters for readers ages 8-12",
+  "author": "Sunil Bhardwaj",
+  "profile": "temple",
+  "audienceMinAge": 8,
+  "audienceMaxAge": 12,
+  "language": "British English",
+  "outputRoot": "../output/books",
+  "subjects": [
+    {
+      "id": "kashi-vishwanath-temple",
+      "name": "Kashi Vishwanath Temple",
+      "aliases": [],
+      "imageQuery": "Kashi Vishwanath Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "brihadeeswarar-temple",
+      "name": "Brihadeeswarar Temple",
+      "aliases": [
+        "Brihadisvara Temple",
+        "Brihadeshwara Temple"
+      ],
+      "imageQuery": "Brihadeeswarar Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "konark-sun-temple",
+      "name": "Konark Sun Temple",
+      "aliases": [],
+      "imageQuery": "Konark Sun Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "meenakshi-amman-temple",
+      "name": "Meenakshi Amman Temple",
+      "aliases": [],
+      "imageQuery": "Meenakshi Amman Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "jagannath-temple",
+      "name": "Jagannath Temple",
+      "aliases": [],
+      "imageQuery": "Jagannath Temple Puri exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "kedarnath-temple",
+      "name": "Kedarnath Temple",
+      "aliases": [],
+      "imageQuery": "Kedarnath Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "somnath-temple",
+      "name": "Somnath Temple",
+      "aliases": [],
+      "imageQuery": "Somnath Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "ramanathaswamy-temple",
+      "name": "Ramanathaswamy Temple",
+      "aliases": [],
+      "imageQuery": "Ramanathaswamy Temple architecture exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "sri-venkateswara-temple",
+      "name": "Sri Venkateswara Temple",
+      "aliases": [],
+      "imageQuery": "Venkateswara Temple Tirumala exterior",
+      "commonsFiles": []
+    },
+    {
+      "id": "mahabodhi-temple",
+      "name": "Mahabodhi Temple",
+      "aliases": [],
+      "imageQuery": "Mahabodhi Temple architecture exterior",
+      "commonsFiles": []
+    }
+  ],
+  "writing": {
+    "styleBible": "../GreatIndians.Factory/profiles/common-style.md",
+    "chapterWordCountMin": 600,
+    "chapterWordCountMax": 900,
+    "writerModel": "openai/gpt-4.1",
+    "researchModel": "openai/gpt-4.1",
+    "reviewerModel": "anthropic/claude-sonnet-4.5",
+    "maxReviewPasses": 3,
+    "maxAttempts": 3,
+    "minSources": 2,
+    "minClaims": 8,
+    "maxSources": 6
+  },
+  "production": {
+    "illustrationStyle": "../GreatIndians.Factory/profiles/storybook-art.md",
+    "styleReferenceImage": "../GreatIndians.Factory/assets/reference/art-style-reference.png",
+    "imageMode": "preferWeb",
+    "maxWebCandidates": 3,
+    "illustrationCount": 4,
+    "minimumImageScore": 70,
+    "maxImageAttempts": 3,
+    "maxLayoutAttempts": 2,
+    "createEpub": true
+  }
+}

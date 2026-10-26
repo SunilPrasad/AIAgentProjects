@@ -3,7 +3,7 @@ using SkiaSharp;
 
 namespace GreatIndians.Factory.Production;
 
-public sealed class IllustratedPipeline(ProductionConfig config, string style, ProductionApi api, ILogger log)
+public sealed class IllustratedPipeline(ProductionConfig config, string style, ProductionApi api, ILogger log, CommonsImageSource? imageSource = null)
 {
     private sealed record LayoutReceipt(string InputHash, LayoutManifest Manifest);
 
@@ -12,7 +12,9 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
 
     public async Task<string> RunAsync(Manuscript manuscript, string outputRoot, CancellationToken ct)
     {
-        var slug = System.Text.RegularExpressions.Regex.Replace(manuscript.Subject.ToLowerInvariant(), "[^a-z0-9]+", "-");
+        ManuscriptReader.VerifyEditorialApproval(manuscript, config);
+        var slug = string.IsNullOrWhiteSpace(manuscript.SubjectId)
+            ? System.Text.RegularExpressions.Regex.Replace(manuscript.Subject.ToLowerInvariant(), "[^a-z0-9]+", "-") : manuscript.SubjectId;
         var name = $"chapter_{manuscript.ChapterNumber:D2}_{slug}";
         var styleReference = StyleReferencePath;
         if (styleReference is not null && !File.Exists(styleReference))
@@ -41,10 +43,10 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             for (int attempt = 1; attempt <= config.MaxApiAttempts; attempt++)
             {
                 plan = await api.JsonAsync<IllustrationPlan>($"plan-{attempt}", config.PlannerModel,
-                    ProductionPrompts.Plan(style, config.IllustrationCount),
+                    ProfilePrompts.Plan(config, style),
                     Data.Write(new { manuscript.Subject, manuscript.Title, manuscript.Paragraphs, correction }), [], files, ct);
                 var adjustments = new List<string>();
-                plan = IllustrationPlanBinding.Bind(manuscript, plan, adjustments);
+                plan = IllustrationPlanBinding.Bind(manuscript, plan, adjustments, config.Subjects);
                 var errors = ValidatePlan(manuscript, plan, config.IllustrationCount);
                 await files.Save($"reviews/plan-{attempt}-validation.json", Data.Write(new { adjustments, errors, boundPlan = plan }));
                 foreach (var adjustment in adjustments)
@@ -60,14 +62,16 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             await files.Save("illustration-plan.json", Data.Write(plan));
 
             // The accepted opening artwork is also the character reference: no duplicate paid portrait.
-            var opening = await CreateReviewed(manuscript, plan.Character, plan.Scenes[0], [], files, ct);
+            using var webImages = imageSource ?? new CommonsImageSource();
+            var usedImages = new HashSet<string>(StringComparer.Ordinal);
+            var opening = await CreateReviewed(manuscript, plan.Character, plan.Scenes[0], [], files, ct, webImages, usedImages);
             var reference = opening with { Scene = opening.Scene with { Id = "character" } };
             var artwork = new List<AcceptedArtwork> { opening };
             log.LogInformation("[PDF][CHARACTER] Reusing approved I01 as character reference; one separate generation/review avoided");
             foreach (var scene in plan.Scenes.Skip(1))
             {
                 ct.ThrowIfCancellationRequested();
-                artwork.Add(await CreateReviewed(manuscript, plan.Character, scene, [reference.Path], files, ct));
+                artwork.Add(await CreateReviewed(manuscript, plan.Character, scene, [reference.Path], files, ct, webImages, usedImages));
             }
             await files.Save("illustrations.json", Data.Write(new { characterReference = reference, illustrations = artwork }));
 
@@ -138,6 +142,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                         string.Join("; ", reviews.Where(r => !r.Passes).Select(Data.Write)));
                 }
                 ManuscriptReader.VerifySourceUnchanged(manuscript);
+                ManuscriptReader.VerifyEditorialApproval(manuscript, config);
                 if (artwork.Append(reference).Any(a => ManuscriptReader.HashFile(a.Path) != a.Sha256))
                     throw new ProductionReviewException("Reviewed artwork changed before finalisation.");
                 if (styleReference is not null && ManuscriptReader.HashFile(styleReference) != styleReferenceSha256)
@@ -157,11 +162,16 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     illustrations = artwork.Select(art => new
                     {
                         art.Scene, filename = Path.Combine(deliveredArt, art.Scene.Id + ".png"), art.Sha256,
-                        art.PixelWidth, art.PixelHeight, art.Review,
+                        art.PixelWidth, art.PixelHeight, art.Review, art.Credit,
+                        sourceKind = art.Credit is null ? "generated" : "commons-photo",
                         sourcePassages = manuscript.Paragraphs.Where(p => art.Scene.ParagraphIds.Contains(p.Id)).Select(p => new { p.Id, p.Text }),
                         printPlacements = layout.Images.Where(i => i.SceneId == art.Scene.Id)
                     })
                 }));
+                await files.Save("image-credits.json", Data.Write(artwork.Where(a => a.Credit is not null)
+                    .Select(a => new { a.Scene.Id, a.Credit })));
+                await files.Save("image-credits.md", "# Image credits\n\n" + string.Join("\n\n", artwork.Where(a => a.Credit is not null)
+                    .Select(a => a.Credit!.Text(a.Scene.Id))));
                 File.Copy(preview, final, true);
                 await files.Save("status.json", Data.Write(new
                 {
@@ -188,8 +198,17 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
     }
 
     private async Task<AcceptedArtwork> CreateReviewed(Manuscript manuscript, CharacterReference character,
-        IllustrationScene scene, string[] references, Artifacts files, CancellationToken ct)
+        IllustrationScene scene, string[] references, Artifacts files, CancellationToken ct,
+        CommonsImageSource webImages, HashSet<string> usedImages)
     {
+        if (config.ImageMode != "generated")
+        {
+            var web = await TryWebImage(manuscript, character, scene, references, files, webImages, usedImages, ct);
+            if (web is not null) return web;
+            if (config.ImageMode == "webOnly")
+                throw new ProductionReviewException($"No suitable reusable web image passed review for {scene.Id}. See web-source reviews; no generated image purchased.");
+            log.LogInformation("[PDF][{Scene}][WEB FALLBACK] No suitable web image; using configured generation fallback", scene.Id);
+        }
         string? correction = null;
         double bestScore = 0;
         for (int attempt = 1; attempt <= config.MaxImageAttempts; attempt++)
@@ -200,13 +219,13 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             var generationReferences = references.Concat(styleImages).ToArray();
             var generationRoles = references.Select(_ => "accepted character reference for THIS chapter")
                 .Concat(styleImages.Select(_ => "art style and palette only; never identity, historical setting, lettering or cropping")).ToArray();
-            var path = await api.GenerateAsync(stage, ProductionPrompts.Image(manuscript, character, scene, style, correction)
+            var path = await api.GenerateAsync(stage, ProfilePrompts.Image(config, manuscript, character, scene, style, correction)
                 + (references.Length == 0 ? "" : "\nThe accepted CHARACTER image establishes the actual appearance. Preserve it even where the written character sheet differs in age, hair or garments.")
                 + "\nATTACHED IMAGE ROLES IN ORDER (empty means no image references):\n" + Data.Write(generationRoles),
                 scene.AspectRatio, generationReferences, files, ct);
             using var bitmap = SKBitmap.Decode(path) ?? throw new InvalidDataException("Cannot decode generated artwork.");
             var review = await api.JsonAsync<ImageReview>(stage + "-review", config.VisionModel,
-                ProductionPrompts.ReviewImage, Data.Write(new
+                ProfilePrompts.Review(config, false), Data.Write(new
                 {
                     manuscript.Subject, character, scene,
                     config.MinimumImageScore,
@@ -235,6 +254,46 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             log.LogWarning("[PDF][{Scene}][REGENERATE] {Issues}", scene.Id, correction);
         }
         throw new ProductionReviewException($"Illustration {scene.Id} did not meet the hard checks and {config.MinimumImageScore}/100 threshold after {config.MaxImageAttempts} attempts. Best reported score: {bestScore}/100. Inspect retained images/reviews; no further attempts were purchased.");
+    }
+
+    private async Task<AcceptedArtwork?> TryWebImage(Manuscript manuscript, CharacterReference character, IllustrationScene scene,
+        string[] references, Artifacts files, CommonsImageSource source, HashSet<string> used, CancellationToken ct)
+    {
+        try
+        {
+            var subject = config.SubjectDefinitions.FirstOrDefault(s => s.Name == manuscript.Subject);
+            var candidates = await source.FindAsync(manuscript, subject, files, ct);
+            foreach (var candidate in candidates.Where(c => !used.Contains(c.DownloadUrl)).Take(config.MaxWebCandidates))
+            {
+                var stage = scene.Id + "-web-" + Data.Hash(candidate.DownloadUrl)[..12];
+                try
+                {
+                    var image = await source.DownloadAsync(candidate, stage, files, ct);
+                    var hash = ManuscriptReader.HashFile(image.Path);
+                    if (used.Contains(hash) || used.Contains(image.Credit.OriginalSha256)) continue;
+                    var assessment = await api.JsonAsync<WebImageReview>(stage + "-review", config.VisionModel, ProfilePrompts.Review(config, true),
+                        Data.Write(new { manuscript.Subject, character, scene, config.MinimumImageScore,
+                            sourceMetadata = image.Credit, sourceDescription = candidate.Description,
+                            passages = manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)),
+                            referenceRoles = new[] { "candidate real web photograph" }.Concat(references.Select(_ => "accepted visual subject reference")),
+                            imageSha256 = hash }), new[] { image.Path }.Concat(references).ToArray(), files, ct);
+                    var review = assessment.Review;
+                    await files.Save($"reviews/{stage}.json", Data.Write(new { image.Credit, assessment, imageSha256 = hash }));
+                    log.LogInformation("[PDF][{Scene}][WEB REVIEW] {Score}/100; photograph={Photo}; no-AI-evidence={Natural}; source={Source}",
+                        scene.Id, review.OverallScore, assessment.IsRealPhotograph, assessment.NoArtificialGenerationEvidence, image.Credit.SourceUrl);
+                    if (!assessment.IsRealPhotograph || !assessment.NoArtificialGenerationEvidence || !review.Accepts(config.MinimumImageScore)) continue;
+                    used.Add(candidate.DownloadUrl);
+                    used.Add(hash);
+                    used.Add(image.Credit.OriginalSha256);
+                    return new AcceptedArtwork(scene, image.Path, hash, image.Width, image.Height, review) { Credit = image.Credit };
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or InvalidDataException or TaskCanceledException or System.Text.Json.JsonException)
+                { log.LogWarning("[PDF][{Scene}][WEB UNAVAILABLE] {Reason}", scene.Id, FailureDetails.Reason(ex)); }
+            }
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or InvalidDataException or TaskCanceledException or System.Text.Json.JsonException)
+        { log.LogWarning("[PDF][{Scene}][WEB SEARCH UNAVAILABLE] {Reason}", scene.Id, FailureDetails.Reason(ex)); }
+        return null;
     }
 
     public static List<string> ValidatePlan(Manuscript manuscript, IllustrationPlan plan, int count)

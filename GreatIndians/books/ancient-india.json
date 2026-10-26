@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "id": "ancient-india",
+  "title": "Legends of Ancient India",
+  "subtitle": "10 illustrated chapters for readers ages 8-12",
+  "author": "Sunil Bhardwaj",
+  "profile": "biography",
+  "audienceMinAge": 8,
+  "audienceMaxAge": 12,
+  "language": "British English",
+  "outputRoot": "../output/books",
+  "subjects": [
+    {
+      "id": "baudhayana",
+      "name": "Baudhayana",
+      "aliases": [],
+      "imageQuery": "Baudhayana portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "chanakya",
+      "name": "Chanakya",
+      "aliases": [],
+      "imageQuery": "Chanakya portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "chandragupta-maurya",
+      "name": "Chandragupta Maurya",
+      "aliases": [],
+      "imageQuery": "Chandragupta Maurya portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "ashoka-the-great",
+      "name": "Ashoka the Great",
+      "aliases": [],
+      "imageQuery": "Ashoka the Great portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "samudragupta",
+      "name": "Samudragupta",
+      "aliases": [],
+      "imageQuery": "Samudragupta portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "aryabhata",
+      "name": "Aryabhata",
+      "aliases": [],
+      "imageQuery": "Aryabhata portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "brahmagupta",
+      "name": "Brahmagupta",
+      "aliases": [],
+      "imageQuery": "Brahmagupta portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "rajaraja-chola-i",
+      "name": "Rajaraja Chola I",
+      "aliases": [],
+      "imageQuery": "Rajaraja Chola I portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "bhaskaracharya",
+      "name": "Bhaskaracharya",
+      "aliases": [],
+      "imageQuery": "Bhaskaracharya portrait",
+      "commonsFiles": []
+    },
+    {
+      "id": "chhatrapati-shivaji-maharaj",
+      "name": "Chhatrapati Shivaji Maharaj",
+      "aliases": [],
+      "imageQuery": "Chhatrapati Shivaji Maharaj portrait",
+      "commonsFiles": []
+    }
+  ],
+  "writing": {
+    "styleBible": "../GreatIndians.Factory/profiles/common-style.md",
+    "chapterWordCountMin": 600,
+    "chapterWordCountMax": 900,
+    "writerModel": "openai/gpt-4.1",
+    "researchModel": "openai/gpt-4.1",
+    "reviewerModel": "anthropic/claude-sonnet-4.5",
+    "maxReviewPasses": 3,
+    "maxAttempts": 3,
+    "minSources": 2,
+    "minClaims": 8,
+    "maxSources": 6
+  },
+  "production": {
+    "illustrationStyle": "../GreatIndians.Factory/profiles/storybook-art.md",
+    "styleReferenceImage": "../GreatIndians.Factory/assets/reference/art-style-reference.png",
+    "imageMode": "generated",
+    "maxWebCandidates": 3,
+    "illustrationCount": 4,
+    "minimumImageScore": 70,
+    "maxImageAttempts": 3,
+    "maxLayoutAttempts": 2,
+    "createEpub": true
+  }
+}

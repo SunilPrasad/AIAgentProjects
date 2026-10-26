@@ -154,3 +154,6 @@ revision (the better candidate wins), and minor-only notes. All produced final c
 honest approval status. Archive export was also checked for zero model calls and unchanged original
 review records. These fixtures verify orchestration and delivery, not the quality of live model text.
 No paid API calls were made by Codex. The user will verify live writing with their chosen models.
+# Multiple books, topic profiles and real photographs
+
+See [GENERIC_BOOKS.md](GENERIC_BOOKS.md) for the shared book definitions, all forty configured subjects, `--book` commands, Commons image sourcing and book-aware assembly tools. Existing single-book commands remain available.

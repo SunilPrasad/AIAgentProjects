@@ -65,8 +65,12 @@ public static class ChapterPdfLayout
     }
 
     private static bool HasSparseTail(LayoutManifest layout)
-        => layout.PageCount > 1 && !layout.Images.Any(i => i.Page == layout.PageCount)
-            && layout.Text.Count(t => t.Page == layout.PageCount && t.Kind == "paragraph") < 6;
+    {
+        // Credits must not hide a nearly empty last narrative page.
+        int tailPage = layout.Text.Where(t => t.Kind == "paragraph").Select(t => t.Page).DefaultIfEmpty(0).Max();
+        return tailPage > 1 && !layout.Images.Any(i => i.Page == tailPage)
+            && layout.Text.Count(t => t.Page == tailPage && t.Kind == "paragraph") < 6;
+    }
 
     private static LayoutManifest CreateCore(
         Manuscript manuscript, IReadOnlyList<AcceptedArtwork> artwork, ProductionConfig config,
@@ -80,7 +84,7 @@ public static class ChapterPdfLayout
         using var pdf = new PdfDocument();
         pdf.Info.Title = manuscript.Title;
         pdf.Info.Subject = "Illustrated researched chapter proof — human publication approval pending";
-        pdf.Info.Author = config.BookTitle;
+        pdf.Info.Author = string.IsNullOrWhiteSpace(config.Author) ? config.BookTitle : config.Author;
         pdf.Info.CreationDate = DateTime.UnixEpoch;
         pdf.Info.ModificationDate = DateTime.UnixEpoch;
         var fonts = new Dictionary<(bool, bool, double), XFont>();
@@ -208,6 +212,9 @@ public static class ChapterPdfLayout
             }
             double maximumHeight = 226.8 * imageScale;
             double scale = Math.Min(Math.Min(320.4 * imageScale, right - left) / art.PixelWidth, maximumHeight / art.PixelHeight);
+            // Real photographs may have varied aspect ratios. Keep a useful contained size even
+            // when a local candidate asks for smaller art; never crop to the generated-scene ratio.
+            if (art.Credit is not null) scale = Math.Max(scale, Math.Max(100d / art.PixelWidth, 90d / art.PixelHeight));
             scale = Math.Min(scale, 72.0 / config.MinimumImageDpi);
             double availableHeight = Height - Bottom - y - 14 - lineHeight * 2;
             double naturalHeight = art.PixelHeight * scale;
@@ -273,6 +280,24 @@ public static class ChapterPdfLayout
                 }
             }
             y += 8;
+        }
+
+        var credited = artwork.Where(a => a.Credit is not null).ToList();
+        if (credited.Count > 0)
+        {
+            NewPage();
+            DrawLine([new TextRun("Image credits", Bold: true)], "image-credit", null, config.FontSize, lineHeight, ink);
+            y += 8;
+            foreach (var art in credited)
+            {
+                var credit = art.Credit!.Text(art.Scene.Id).Replace('_', ' ');
+                foreach (var line in Wrap([new TextRun(credit)], config.FontSize, right - left))
+                {
+                    if (y + lineHeight > Height - Bottom) NewPage();
+                    DrawLine(line, "image-credit", null, config.FontSize, lineHeight, ink);
+                }
+                y += 10;
+            }
         }
 
         // Footer numbers are drawn last and tracked independently from manuscript content.
@@ -372,7 +397,10 @@ public static class ChapterPdfLayout
                 var footer = manifest.Text.Single(t => t.Page == page.Number && t.Kind == "footer").Text;
                 if (narrative.EndsWith(" " + footer, StringComparison.Ordinal))
                     narrative = narrative[..^(footer.Length + 1)];
-                actualNarrative.Add(narrative);
+                bool creditPage = manifest.Text.Any(t => t.Page == page.Number && t.Kind == "image-credit");
+                if (creditPage && manifest.Text.Any(t => t.Page == page.Number && t.Kind is "paragraph" or "title"))
+                    issues.Add($"Image credits must be separate from source narrative on page {page.Number}.");
+                actualNarrative.Add(creditPage ? "" : narrative);
                 if (page.Letters.Any(letter => letter.BoundingBox.Left < 18 || letter.BoundingBox.Right > Width - 18
                     || letter.BoundingBox.Bottom < 18 || letter.BoundingBox.Top > Height - 18))
                 {

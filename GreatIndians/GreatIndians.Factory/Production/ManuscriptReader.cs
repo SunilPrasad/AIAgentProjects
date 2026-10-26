@@ -58,14 +58,23 @@ public static class ManuscriptReader
             throw new InvalidDataException("A title and enough narrative paragraphs for the requested illustrations are required.");
         }
 
-        var matches = config.Subjects.Where(subject => title.Contains(subject, StringComparison.OrdinalIgnoreCase)).ToList();
+        var filename = Path.GetFileNameWithoutExtension(path);
+        var bound = config.SubjectDefinitions.Select((s, index) => new { Subject = s, Index = index })
+            .Where(s => filename.Equals($"{s.Index + 1:D2}-{s.Subject.Id}", StringComparison.OrdinalIgnoreCase)).ToList();
+        var matches = bound.Count == 1 ? [bound[0].Subject.Name] : config.Subjects.Where(subject =>
+            title.Contains(subject, StringComparison.OrdinalIgnoreCase) || config.SubjectDefinitions.Any(s => s.Name == subject
+                && s.Aliases.Any(alias => title.Contains(alias, StringComparison.OrdinalIgnoreCase)))).ToList();
         if (matches.Count != 1)
         {
-            throw new InvalidDataException("The chapter title must identify exactly one of the configured ten historical subjects.");
+            throw new InvalidDataException("Use the configured stable chapter filename, or a title identifying exactly one configured subject/name/alias.");
         }
         var subjectName = matches[0];
         return new Manuscript(path, Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant(), title,
-            subjectName, Array.IndexOf(config.Subjects, subjectName) + 1, paragraphs, omitted);
+            subjectName, Array.IndexOf(config.Subjects, subjectName) + 1, paragraphs, omitted)
+        {
+            SubjectId = config.SubjectDefinitions.FirstOrDefault(s => s.Name == subjectName)?.Id ?? "",
+            Profile = config.Profile
+        };
     }
 
     private static string Plain(IEnumerable<TextRun> runs) => string.Concat(runs.Select(run => run.Text));
@@ -115,5 +124,17 @@ public static class ManuscriptReader
         {
             throw new InvalidDataException("The authoritative Markdown changed during production. Finalisation stopped; rerun against the new source.");
         }
+    }
+
+    public static void VerifyEditorialApproval(Manuscript manuscript, ProductionConfig config)
+    {
+        if (!config.RequireEditorialApproval) return;
+        var bookRoot = Path.GetDirectoryName(Path.GetDirectoryName(manuscript.SourcePath))!;
+        var statusPath = Path.Combine(bookRoot, "chapters", Path.GetFileNameWithoutExtension(manuscript.SourcePath) + ".status.json");
+        if (!File.Exists(statusPath)) throw new InvalidDataException("Missing editorial status for this manuscript; complete writing review first, or explicitly use --allow-unreviewed for a proof.");
+        var result = Data.Read<ChapterResult>(File.ReadAllText(statusPath));
+        if (result.Subject != manuscript.Subject || result.ContentHash != Data.Hash(File.ReadAllText(manuscript.SourcePath))
+            || result.Status != "AI_APPROVED_PENDING_HUMAN" && !result.PublicationApproved)
+            throw new InvalidDataException("Manuscript does not have matching completed mandatory editorial checks. Resolve findings, or explicitly use --allow-unreviewed for a proof.");
     }
 }

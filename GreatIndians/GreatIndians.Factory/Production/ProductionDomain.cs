@@ -4,6 +4,15 @@ namespace GreatIndians.Factory.Production;
 
 public sealed record ProductionConfig
 {
+    public string BookId { get; init; } = "";
+    public string Author { get; init; } = "";
+    public string Profile { get; init; } = "biography";
+    public int AudienceMinAge { get; init; } = 8;
+    public int AudienceMaxAge { get; init; } = 12;
+    public SubjectDefinition[] SubjectDefinitions { get; init; } = [];
+    public string ImageMode { get; init; } = "generated";
+    public int MaxWebCandidates { get; init; } = 3;
+    public bool RequireEditorialApproval { get; init; }
     public string BookTitle { get; init; } = "Legends of Ancient India";
     public string Subtitle { get; init; } = "10 Inspiring True Stories of Great Kings, Brilliant Minds and Visionaries for Kids Ages 8–12";
     public string ManuscriptsDirectory { get; init; } = "../output/final-chapters";
@@ -32,16 +41,21 @@ public sealed record ProductionConfig
 
     public void Validate()
     {
-        if (IllustrationCount is < 4 or > 7 || MaxImageAttempts is < 1 or > 5
+        if (!ContentProfiles.All.Contains(Profile) || !new[] { "generated", "preferWeb", "webOnly" }.Contains(ImageMode)
+            || SubjectDefinitions is null || SubjectDefinitions.Length > 0 && (Subjects is null || SubjectDefinitions.Length != Subjects.Length
+                || SubjectDefinitions.Where((s, i) => s is null || s.Name != Subjects[i] || string.IsNullOrWhiteSpace(s.Id)
+                    || !System.Text.RegularExpressions.Regex.IsMatch(s.Id, "^[a-z0-9]+(?:-[a-z0-9]+)*$")).Any())
+            || MaxWebCandidates is < 1 or > 6 || AudienceMinAge < 1 || AudienceMaxAge < AudienceMinAge
+            || IllustrationCount is < 1 or > 7 || MaxImageAttempts is < 1 or > 5
             || MinimumImageScore is < 70 or > 95
             || MaxLayoutAttempts is < 1 or > 3 || MaxApiAttempts is < 1 or > 5
             || MinimumImageDpi < 300 || Math.Abs(FontSize - ProductionDesign.BodySize) > 0.000001
             || FontSize * LineSpacing < 16.5 || FontSize * LineSpacing > 17.5
-            || BookPageCountForGutter is < 0 or > 828 || Subjects is not { Length: 10 }
+            || BookPageCountForGutter is < 0 or > 828 || Subjects is not { Length: > 0 }
             || Subjects.Any(string.IsNullOrWhiteSpace) || Subjects.Distinct().Count() != Subjects.Length
             || new[] { PlannerModel, ImageModel, VisionModel }.Any(model => string.IsNullOrWhiteSpace(model) || !model.Contains('/')))
         {
-            throw new InvalidDataException("Invalid production configuration. Use a minimum image score of 70–95. The master design requires 12.1pt body text and 16.5–17.5pt leading; use 4–7 illustrations, 300+ PPI and the ten supplied subjects.");
+            throw new InvalidDataException("Invalid production configuration. Require a supported profile/image mode, named subjects, minimum image score 70–95, 1–7 illustrations, 300+ PPI, 12.1pt text and 16.5–17.5pt leading.");
         }
     }
 }
@@ -50,7 +64,11 @@ public sealed record TextRun(string Text, bool Italic = false, bool Bold = false
 public sealed record ManuscriptParagraph(string Id, string OriginalMarkdown, string Text, List<TextRun> Runs);
 public sealed record Manuscript(
     string SourcePath, string SourceSha256, string Title, string Subject, int ChapterNumber,
-    List<ManuscriptParagraph> Paragraphs, List<string> SuppressedHeadings);
+    List<ManuscriptParagraph> Paragraphs, List<string> SuppressedHeadings)
+{
+    public string SubjectId { get; init; } = "";
+    public string Profile { get; init; } = "biography";
+}
 
 public sealed record CharacterReference(
     [property: JsonRequired] string Name,
@@ -146,7 +164,10 @@ public sealed record PageReview(
         && Issues is { Count: 0 } && EditorialNotes is not null;
 }
 public sealed record AcceptedArtwork(
-    IllustrationScene Scene, string Path, string Sha256, int PixelWidth, int PixelHeight, ImageReview Review);
+    IllustrationScene Scene, string Path, string Sha256, int PixelWidth, int PixelHeight, ImageReview Review)
+{
+    public WebImageCredit? Credit { get; init; }
+}
 public sealed record ImagePlacement(string SceneId, int Page, double X, double Y, double Width, double Height, double EffectiveDpi);
 public sealed record TextPlacement(string Kind, string? ParagraphId, int Page, double X, double Y, string Text);
 public sealed record LayoutManifest(

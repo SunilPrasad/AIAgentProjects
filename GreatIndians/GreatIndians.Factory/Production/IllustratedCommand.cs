@@ -8,32 +8,49 @@ public static class IllustratedCommand
     {
         string configPath = File.Exists("production.json") ? Path.GetFullPath("production.json") : Path.Combine(AppContext.BaseDirectory, "production.json");
         string? chapter = null;
-        bool all = false, inspect = false, epub = false;
+        bool all = false, inspect = false, epub = false, sharedBook = false, allowUnreviewed = false, legacyConfig = false;
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
-                case "--config" when i + 1 < args.Length: configPath = Path.GetFullPath(args[++i]); break;
+                case "--config" when i + 1 < args.Length: configPath = Path.GetFullPath(args[++i]); legacyConfig = true; break;
+                case "--book" when i + 1 < args.Length: configPath = Path.GetFullPath(args[++i]); sharedBook = true; break;
                 case "--chapter" when i + 1 < args.Length: chapter = args[++i]; break;
                 case "--all": all = true; break;
                 case "--inspect": inspect = true; break;
+                case "--allow-unreviewed": allowUnreviewed = true; break;
                 case "--epub": epub = true; break;
-                default: throw new ArgumentException("Usage: dotnet run -- pdf --chapter Bhaskaracharya [--inspect] [--epub] [--config production.json], or --all");
+                default: throw new ArgumentException("Usage: dotnet run -- pdf (--chapter <name-or-id> | --all) [--book definition.json | --config production.json] [--inspect] [--epub] [--allow-unreviewed]");
             }
         }
         if (all == (chapter is not null)) throw new ArgumentException("Select either --chapter <subject-or-md-path> or --all.");
+        if (sharedBook && legacyConfig) throw new ArgumentException("Use either --book or --config, not both.");
         var directory = Path.GetDirectoryName(configPath)!;
-        var config = Data.Read<ProductionConfig>(await File.ReadAllTextAsync(configPath, ct));
+        var config = sharedBook ? BookDefinition.Load(configPath).ForProduction(configPath)
+            : Data.Read<ProductionConfig>(await File.ReadAllTextAsync(configPath, ct));
         if (epub) config = config with { CreateEpub = true };
+        if (allowUnreviewed) config = config with { RequireEditorialApproval = false };
         if (!string.IsNullOrWhiteSpace(config.StyleReferenceImage))
             config = config with { StyleReferenceImage = Path.GetFullPath(config.StyleReferenceImage, directory) };
         config.Validate();
         var inputRoot = Path.GetFullPath(config.ManuscriptsDirectory, directory);
+        if (inspect && all && !Directory.Exists(inputRoot))
+        {
+            Console.WriteLine($"Book: {config.BookTitle}; profile={config.Profile}; images={config.ImageMode}; manuscripts={inputRoot}; none generated yet.");
+            return 0;
+        }
         var paths = Directory.GetFiles(inputRoot, "*.md").Order().ToList();
         if (chapter is not null)
         {
             if (File.Exists(chapter)) paths = [Path.GetFullPath(chapter)];
-            else paths = paths.Where(p => ManuscriptReader.Load(p, config).Subject.Equals(chapter, StringComparison.OrdinalIgnoreCase)).ToList();
+            else paths = paths.Where(p =>
+            {
+                var m = ManuscriptReader.Load(p, config);
+                var definition = config.SubjectDefinitions.FirstOrDefault(s => s.Id == m.SubjectId);
+                return m.Subject.Equals(chapter, StringComparison.OrdinalIgnoreCase)
+                    || m.SubjectId.Equals(chapter, StringComparison.OrdinalIgnoreCase)
+                    || definition?.Aliases.Contains(chapter, StringComparer.OrdinalIgnoreCase) == true;
+            }).ToList();
             if (paths.Count != 1) throw new InvalidDataException("Chapter must resolve to exactly one existing final Markdown manuscript.");
         }
         if (paths.Count == 0) throw new InvalidDataException("No final Markdown manuscripts found.");

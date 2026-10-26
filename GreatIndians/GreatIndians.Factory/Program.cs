@@ -18,10 +18,14 @@ try
     }
 
     bool exportExisting = args.FirstOrDefault() == "--export-existing";
-    var configArguments = exportExisting ? args.Skip(1).ToArray() : args;
+    var configArguments = (exportExisting ? args.Skip(1) : args).ToList();
+    bool inspect = configArguments.Remove("--inspect");
+    bool sharedBook = configArguments.Count > 0 && configArguments[0] == "--book";
+    if (sharedBook) configArguments.RemoveAt(0);
+    if (sharedBook && configArguments.Count != 1) throw new ArgumentException("Usage: dotnet run -- --book <definition.json> [--inspect]");
     string configFile;
 
-    if (configArguments.Length > 0)
+    if (configArguments.Count > 0)
     {
         configFile = configArguments[0];
     }
@@ -37,7 +41,7 @@ try
     var configPath = Path.GetFullPath(configFile);
     var configDirectory = Path.GetDirectoryName(configPath)!;
     var configJson = await File.ReadAllTextAsync(configPath);
-    var config = Data.Read<BookConfig>(configJson);
+    var config = sharedBook ? BookDefinition.Load(configPath).ForWriting(configPath) : Data.Read<BookConfig>(configJson);
 
     config.Validate();
 
@@ -50,6 +54,13 @@ try
     }
 
     var outputDirectory = Path.GetFullPath(config.OutputDirectory, configDirectory);
+    if (inspect)
+    {
+        Console.WriteLine($"Book: {config.BookTitle}; profile={config.Profile}; output={outputDirectory}");
+        for (int index = 0; index < config.Personalities.Count; index++)
+            Console.WriteLine($"{config.ChapterName(index)}: {config.Personalities[index]}");
+        return;
+    }
     Directory.CreateDirectory(outputDirectory);
 
     using var runLock = new FileStream(
@@ -73,7 +84,7 @@ try
     var logger = logging.CreateLogger("BookFactory");
 
     Console.WriteLine(
-        "GREAT INDIANS — AI BOOK WRITING FACTORY | Microsoft Agent Framework | .NET 10");
+        $"{config.BookTitle.ToUpperInvariant()} — AI BOOK WRITING FACTORY | Microsoft Agent Framework | .NET 10");
 
     logger.LogInformation(
         "[BOOK][Startup][LOAD] {Title}; {Count} chapters; automatic mode; Style Bible loaded",

@@ -5,7 +5,7 @@ namespace GreatIndians.Factory.Production;
 /// <summary>Author's master design tokens; shared by layout, EPUB and review prompts.</summary>
 public static class ProductionDesign
 {
-    public const string Version = "reference-balanced-v4";
+    public const string Version = "profiled-credits-v5";
     public const string FontFamily = "Liberation Serif";
     public const string FontPrefix = "LiberationSerif-";
     public const double BodySize = 12.1;
@@ -40,13 +40,17 @@ public static class ProductionDesign
         => XColor.FromArgb(Convert.ToInt32(hex[1..], 16) | unchecked((int)0xff000000));
 
     public static string Description(ProductionConfig config)
-        => $"Ages 8–12. 432 × 648pt full-colour pages; warm ivory {Paper}. " +
+        => $"Ages {config.AudienceMinAge}–{config.AudienceMaxAge}. 432 × 648pt full-colour pages; warm ivory {Paper}. " +
             $"Body: {FontFamily} Regular {BodySize}pt, ink {Body}, leading {BodySize * config.LineSpacing:F2}pt. " +
             $"One centred original chapter title: {FontFamily} Bold {TitleSize}pt {Title}. " +
             $"Chapter number: Bold {ChapterSize}pt {Gold}. Page numbers: Regular {PageNumberSize}pt {PageNumber}. " +
             "Embedded fonts, selectable unchanged paragraphs, mirrored margins and a safe gutter. " +
-            "Vibrant cinematic Indian historical children's storybook art with rich watercolour-and-gouache textures, " +
+            "Generated illustrations: vibrant cinematic nonfiction children's storybook art with rich watercolour-and-gouache textures, " +
             "expressive characters, warm golden sunlight, luminous skies, lush foliage and atmospheric depth. " +
             $"Art palette: sky {Sky}, turquoise {Turquoise}, emerald {Emerald}, sunshine {Sunshine}, coral {Coral}. " +
-            "Complete heads/headwear/hands/important objects; 10–15% headroom; no artwork text or destructive cropping.";
+            (ContentProfiles.IsPerson(config.Profile)
+                ? "Complete heads/headwear/hands/important objects; 10–15% headroom; "
+                : "Complete important structures/objects; consistent architecture and safe surrounding space; ") +
+            "no generated artwork text or destructive cropping. " +
+            (config.ImageMode == "generated" ? "" : "Real photographs keep their photographic appearance and authentic incidental inscriptions; do not recolour/repaint them to match the generated palette.");
 }

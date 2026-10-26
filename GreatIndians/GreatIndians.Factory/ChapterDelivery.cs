@@ -131,7 +131,7 @@ public static class BookArchive
         {
             ct.ThrowIfCancellationRequested();
             var subject = config.Personalities[index];
-            var name = $"{index + 1:D2}-{Data.Slug(subject)}";
+            var name = config.ChapterName(index);
 
             foreach (var run in Directory.EnumerateDirectories(runsRoot).OrderByDescending(Directory.GetLastWriteTimeUtc))
             {

@@ -30,7 +30,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         {
             ct.ThrowIfCancellationRequested();
             var subject = config.Personalities[index];
-            var name = $"{index + 1:D2}-{Data.Slug(subject)}";
+            var name = config.ChapterName(index);
             var folder = Path.Combine(root, name);
             var previousFolders = Directory.EnumerateDirectories(Path.Combine(bookRoot, "runs"))
                 .Where(previousRun => previousRun != root)

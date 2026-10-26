@@ -27,7 +27,7 @@ public sealed class EvidenceBuilder(
         await files.Save("research/source-excerpts.json", Data.Write(excerpts));
         var instructions = commonInstructions +
             $"\nSelect at least {config.MinClaims} useful historical claims from the numbered source excerpts. " +
-            "Cover life chronology, context and achievements using multiple independent source domains. " +
+            "Cover the subject using multiple independent source domains. " + ContentProfiles.Guidance(config.Profile) + " " +
             "For each claim, return id, text and excerptId. Copy excerptId exactly from the supplied list. " +
             "The selected excerpt must support the entire claim. Preserve uncertainty and qualify disputed accounts. " +
             "Do not transcribe, edit or invent quotations: application code will attach the exact saved excerpt. " +
