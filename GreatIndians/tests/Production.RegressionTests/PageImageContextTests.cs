@@ -26,6 +26,14 @@ internal static class PageImageContextTests
             || !PageImageContext.CanFixByRelayout(passed with { NoClipping = false }))
             throw new Exception("Semantic page failures were treated as repairable by resizing.");
         string prompt = ProfilePrompts.PageReview(new ProductionConfig { ImageMode = "webOnly" });
+        var optional = new ProductionConfig { ImageMode = "webOnly", MissingWebImagePolicy = "skip" };
+        var wrongPhoto = passed with { Approved = false, CorrectSubject = false, NoOverlap = false };
+        if (PageImageContext.PhotoToOmit(optional, wrongPhoto, [photo]) != photo
+            || PageImageContext.PhotoToOmit(optional, wrongPhoto, [photo, photo]) is not null
+            || PageImageContext.PhotoToOmit(optional, wrongPhoto, [artwork]) is not null
+            || PageImageContext.PhotoToOmit(optional with { MissingWebImagePolicy = "stop" }, wrongPhoto, [photo]) is not null
+            || PageImageContext.PhotoToOmit(optional, passed with { Approved = false, NoClipping = false }, [photo]) is not null)
+            throw new Exception("Photo omission recovery bypassed policy, ambiguously identified an image, or ignored a layout-only failure.");
         if (!prompt.Contains("An adult portrait correctly introduces") || !prompt.Contains("Still reject actual wrong identities"))
             throw new Exception("Page photograph rules weaken checks or lack the documentary introduction policy.");
         Console.WriteLine("PASS page review: documentary context excludes invented costumes/scenes, generated context retained, valid portrait introductions and bounded semantic failures");

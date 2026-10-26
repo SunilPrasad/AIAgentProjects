@@ -105,7 +105,9 @@ Set `production.missingWebImagePolicy` to `"skip"` to omit missing/rejected phot
 
 ### Configure how images are reviewed
 
-Set `production.imageReview` in the book JSON. Photographs now have a standalone review prompt and never inherit the painted-art review instructions or speculative generated character/scene brief.
+Set `production.imageReview` in the book JSON. Photographs have a standalone review prompt and never inherit the painted-art review instructions or speculative generated character/scene brief. Each photo review receives only the candidate image, so an accepted portrait cannot be mistaken for another candidate. Document and publication-page scans are rejected.
+
+With `webOnly` and `missingWebImagePolicy: "skip"`, a final page identity/passage rejection can also omit the page's sole photograph and rebuild the PDF/EPUB. The failed proof/review and omission reason remain available. Every rebuilt proof must pass the normal text/layout/page checks; scores and hard checks are unchanged. Recovery is bounded by the retained photo count, with the configured geometry retry limit applied separately to each rebuilt set. Pages containing several images still stop on an ambiguous semantic rejection rather than guess which image is wrong.
 
 ```json
 "production": {

@@ -128,7 +128,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             notes.AddRange(skippedImages.Select(s => $"{s.SceneId} omitted: {s.Reason}"));
             await files.Save("illustrations.json", Data.Write(new { characterReference = reference, illustrations = artwork, skippedImages }));
 
-            for (int attempt = 1; attempt <= config.MaxLayoutAttempts; attempt++)
+            // Omission recovery always removes an image; geometry retries remain separately bounded.
+            for (int attempt = 1, geometryAttempt = 1; geometryAttempt <= config.MaxLayoutAttempts; attempt++, geometryAttempt++)
             {
                 var preview = Path.Combine(root, $"preview-{attempt}.pdf");
                 log.LogInformation("[PDF][LAYOUT] Creating and checking proof {Attempt}", attempt);
@@ -151,14 +152,14 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     }
                     catch (System.Text.Json.JsonException) { }
                 }
-                layout ??= ChapterPdfLayout.Create(manuscript, artwork, config, preview, attempt == 1 ? 1 : 0.85);
+                layout ??= ChapterPdfLayout.Create(manuscript, artwork, config, preview, geometryAttempt == 1 ? 1 : 0.85);
                 await files.Save($"cache/layout-{attempt}.json", Data.Write(new LayoutReceipt(layoutInputs, layout)));
                 await files.Save($"layout-{attempt}.json", Data.Write(layout));
                 var checks = ChapterPdfLayout.Verify(preview, manuscript, layout, config);
                 await files.Save($"text-checks-{attempt}.json", Data.Write(checks));
                 if (!checks.Passed)
                 {
-                    if (attempt < config.MaxLayoutAttempts)
+                    if (geometryAttempt < config.MaxLayoutAttempts)
                     {
                         log.LogWarning("[PDF][LAYOUT][REBALANCE] {Issues}", string.Join("; ", checks.Issues));
                         continue;
@@ -168,6 +169,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 var pages = ChapterPdfLayout.RenderPages(preview, Path.Combine(root, $"pages-{attempt}"));
                 if (pages.Count != layout.PageCount) throw new ProductionReviewException("Not every PDF page was rendered.");
                 var reviews = new List<PageReview>();
+                AcceptedArtwork? rejectedPhoto = null;
                 var examinedPages = new List<int>();
                 var reviewedPages = PagesForVisualReview(layout, config.PageReviewScope);
                 if (reviewedPages.Count < pages.Count)
@@ -196,6 +198,13 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     notes.AddRange(review.EditorialNotes);
                     if (!review.Passes && !PageImageContext.CanFixByRelayout(review))
                     {
+                        var pageArtwork = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id)).ToList();
+                        rejectedPhoto = PageImageContext.PhotoToOmit(config, review, pageArtwork);
+                        if (rejectedPhoto is not null)
+                        {
+                            log.LogWarning("[PDF][LAYOUT][OMIT] Page {Page} rejected photo {Scene}; removing it and checking a rebuilt proof.", number, rejectedPhoto.Scene.Id);
+                            break;
+                        }
                         log.LogWarning("[PDF][LAYOUT][STOP] Page {Page} reported an identity/passage issue; resizing cannot fix it. Skipping further paid page reviews and layout retries.", number);
                         break;
                     }
@@ -203,7 +212,20 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 await files.Save($"page-reviews-{attempt}.json", Data.Write(new { layout.PdfSha256, config.PageReviewScope, plannedPages = reviewedPages, reviewedPages = examinedPages, reviews }));
                 if (reviews.Any(r => !r.Passes))
                 {
-                    if (attempt < config.MaxLayoutAttempts && reviews.Where(r => !r.Passes).All(PageImageContext.CanFixByRelayout)) continue;
+                    if (rejectedPhoto is not null)
+                    {
+                        artwork.Remove(rejectedPhoto);
+                        checkedArtwork.RemoveAll(a => a.Sha256 == rejectedPhoto.Sha256);
+                        if (reference?.Sha256 == rejectedPhoto.Sha256) reference = null;
+                        string reason = "Final page review rejected this photograph's identity/passage: " + string.Join("; ", reviews.Last().Issues);
+                        skippedImages.Add(new SkippedImage(rejectedPhoto.Scene.Id, rejectedPhoto.Scene.InsertBeforeParagraphId, reason));
+                        notes.Add($"{rejectedPhoto.Scene.Id} omitted: {reason}");
+                        await files.Save("image-omissions.json", Data.Write(skippedImages));
+                        await files.Save("illustrations.json", Data.Write(new { characterReference = reference, illustrations = artwork, skippedImages }));
+                        geometryAttempt = 0;
+                        continue;
+                    }
+                    if (geometryAttempt < config.MaxLayoutAttempts && reviews.Where(r => !r.Passes).All(PageImageContext.CanFixByRelayout)) continue;
                     throw new ProductionReviewException("Rendered page review failed: " +
                         string.Join("; ", reviews.Where(r => !r.Passes).Select(Data.Write)));
                 }
@@ -274,7 +296,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
     {
         if (config.ImageMode != "generated")
         {
-            var web = await TryWebImage(manuscript, character, scene, references, files, webImages, usedImages, ct);
+            var web = await TryWebImage(manuscript, scene, files, webImages, usedImages, ct);
             if (web is not null) return web;
             if (config.ImageMode == "webOnly")
             {
@@ -345,8 +367,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         throw new ProductionReviewException($"Illustration {scene.Id} did not meet the hard checks and {config.MinimumImageScore}/100 threshold after {config.MaxImageAttempts} attempts. Best reported score: {bestScore}/100. Inspect retained images/reviews; no further attempts were purchased.");
     }
 
-    private async Task<AcceptedArtwork?> TryWebImage(Manuscript manuscript, CharacterReference character, IllustrationScene scene,
-        string[] references, Artifacts files, CommonsImageSource source, HashSet<string> used, CancellationToken ct)
+    private async Task<AcceptedArtwork?> TryWebImage(Manuscript manuscript, IllustrationScene scene,
+        Artifacts files, CommonsImageSource source, HashSet<string> used, CancellationToken ct)
     {
         try
         {
@@ -370,8 +392,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                             placement = scene.InsertBeforeParagraphId, config.MinimumImageScore,
                             sourceMetadata = image.Credit, sourceDescription = candidate.Description,
                             passages = manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)),
-                            referenceRoles = new[] { "candidate real web photograph" }.Concat(references.Select(_ => "accepted visual subject reference")),
-                            imageSha256 = hash }), new[] { image.Path }.Concat(references).ToArray(), files, ct, config.ReviewImageMaxEdge);
+                            referenceRoles = new[] { "sole candidate real web photograph" },
+                            imageSha256 = hash }), [image.Path], files, ct, config.ReviewImageMaxEdge);
                     var review = assessment.Review;
                     await files.Save($"reviews/{stage}.json", Data.Write(new { image.Credit, assessment, imageSha256 = hash }));
                     log.LogInformation("[PDF][{Scene}][WEB REVIEW] {Score}/100; photograph={Photo}; no-AI-evidence={Natural}; source={Source}",

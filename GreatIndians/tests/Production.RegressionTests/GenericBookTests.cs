@@ -145,6 +145,22 @@ internal static class GenericBookTests
             "Semantic rejection purchased more page reviews/layout retries or promoted a final PDF.");
         modelHandler.RejectPageSemantics = false;
 
+        var optionalPageConfig = config with { MissingWebImagePolicy = "skip", MaxLayoutAttempts = 1 };
+        using var optionalPageApi = new ProductionApi(optionalPageConfig, "OFFLINE", NullLogger.Instance, modelHttp);
+        modelHandler.RejectPageSceneId = "I01";
+        string recovered = await new IllustratedPipeline(optionalPageConfig, "OFFLINE FIXTURE", optionalPageApi, NullLogger.Instance, web)
+            .RunAsync(manuscript, Path.Combine(root, "optional-final-page-rejection"), default);
+        string recoveredRoot = Path.GetDirectoryName(recovered)!;
+        var recoveredLayout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(recoveredRoot, "layout-2.json")));
+        Check(recoveredLayout.Images.Count == 0 && ChapterPdfLayout.Verify(recovered, manuscript, recoveredLayout, optionalPageConfig).Passed
+            && File.ReadAllText(Path.Combine(recoveredRoot, "image-omissions.json")).Contains("Final page review rejected")
+            && File.ReadAllText(Path.Combine(recoveredRoot, "illustrations.json")).Contains("\"characterReference\": null"),
+            "Final page rejection failed to remove the bad photo/reference, audit the omission or preserve the manuscript.");
+        using (var recoveredArchive = ZipFile.OpenRead(recovered.Replace("_print.pdf", ".epub", StringComparison.Ordinal)))
+            Check(!recoveredArchive.Entries.Any(e => e.FullName.EndsWith(".png")), "Rejected photo remained in the EPUB.");
+        modelHandler.RejectPageSceneId = "";
+        Console.WriteLine("PASS final-page photo rejection: omit and rebuild with exact text, independently bounded geometry retries, no rejected EPUB image");
+
         using var noWebHttp = new HttpClient(new WebHandler { Empty = true });
         using var noWeb = new CommonsImageSource(noWebHttp);
         bool stopped = false;
@@ -277,6 +293,7 @@ internal static class GenericBookTests
         public int PhotoPageContexts, PageReviewCalls;
         public int PlannedSceneCount = 1;
         public string RejectPhotoSceneId = "";
+        public string RejectPageSceneId = "";
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
@@ -296,6 +313,9 @@ internal static class GenericBookTests
                         .GetString()!.Contains("availableWebImages", StringComparison.Ordinal);
                 if (name == "WebImageReview")
                 {
+                    Check(json.RootElement.GetProperty("messages")[1].GetProperty("content").EnumerateArray()
+                        .Count(c => c.GetProperty("type").GetString() == "image_url") == 1,
+                        "Photo review received another image and could confuse the candidate with an accepted portrait.");
                     using var photoInput = JsonDocument.Parse(json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text").GetString()!);
                     PhotoReviewHadNoArtBrief = !photoInput.RootElement.TryGetProperty("character", out _)
                         && !photoInput.RootElement.TryGetProperty("scene", out _);
@@ -305,6 +325,8 @@ internal static class GenericBookTests
                 {
                     PageReviewCalls++;
                     using var pageInput = JsonDocument.Parse(json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text").GetString()!);
+                    rejectScene = pageInput.RootElement.GetProperty("illustrations").EnumerateArray()
+                        .Any(i => i.TryGetProperty("sceneId", out var id) && id.GetString() == RejectPageSceneId);
                     foreach (var image in pageInput.RootElement.GetProperty("illustrations").EnumerateArray())
                         if (image.TryGetProperty("sourceKind", out var kind) && kind.GetString() == "wikimedia-photograph")
                         { PhotoPageContexts++; PhotoPagesHadNoArtBrief &= !image.TryGetProperty("Scene", out _); }
@@ -317,7 +339,7 @@ internal static class GenericBookTests
                     "ImageReview" => Review(),
                     "WebImageReview" => new WebImageReview(!RejectWebPhoto, !RejectWebPhoto,
                         rejectScene ? Review() with { MatchesPassage = false, Issues = ["Offline wrong passage"] } : Review()),
-                    "PageReview" => RejectPageSemantics
+                    "PageReview" => RejectPageSemantics || rejectScene
                         ? new PageReview(false, true, true, true, true, true, true, false, true, ["Offline semantic rejection"], [])
                         : new PageReview(true, true, true, true, true, true, true, true, true, [], []),
                     _ => throw new InvalidOperationException("Unexpected schema " + name)
