@@ -80,6 +80,7 @@ internal static class DiscoveryTests
         await DiscoveryConfigStore.ApplyAsync(newPath, null, book, settings, result, default);
         var newNode = JsonNode.Parse(await File.ReadAllTextAsync(newPath))!;
         Check(newNode["id"] is not null && newNode["subjects"]![0]!["id"] is not null, "New JSON incompatible with Python tools.");
+        Check(BookDefinition.Load(newPath).Production.ImageMode == "webOnly", "New science collection permitted generated illustrations by default.");
 
         var oldSubject = new SubjectDefinition { Id = "alpha-stable", Name = "Alpha Scientist", Aliases = ["Alpha S"], ImageQuery = "curated query", CommonsFiles = ["File:Curated.jpg"] };
         var preserveBook = book with { Subjects = [oldSubject] };

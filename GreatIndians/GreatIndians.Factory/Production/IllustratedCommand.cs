@@ -57,6 +57,7 @@ public static class IllustratedCommand
         var manuscripts = paths.Select(path => ManuscriptReader.Load(path, config)).ToList();
         if (inspect)
         {
+            Console.WriteLine($"Image policy: {config.ImageMode}; AI image generation {(config.ImageMode == "webOnly" ? "DISABLED; reviewed Wikimedia photographs only" : "permitted by configuration")}");
             Console.WriteLine($"Design {ProductionDesign.Version}: {ProductionDesign.Description(config)}");
             foreach (var m in manuscripts) Console.WriteLine($"{m.Subject}: {m.Paragraphs.Count} paragraphs; {m.Headings.Count} section headings retained at {ProductionDesign.HeadingSize}pt; SHA-256={m.SourceSha256}; source={m.SourcePath}");
             return 0;

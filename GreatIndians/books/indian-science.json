@@ -97,7 +97,7 @@
   "production": {
     "illustrationStyle": "../GreatIndians.Factory/profiles/storybook-art.md",
     "styleReferenceImage": "../GreatIndians.Factory/assets/reference/art-style-reference.png",
-    "imageMode": "preferWeb",
+    "imageMode": "webOnly",
     "maxWebCandidates": 3,
     "illustrationCount": 4,
     "minimumImageScore": 70,

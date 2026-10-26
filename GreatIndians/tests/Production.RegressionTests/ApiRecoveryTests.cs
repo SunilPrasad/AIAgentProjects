@@ -27,6 +27,14 @@ internal static class ApiRecoveryTests
         Check(error.Contains("unsupported aspect ratio") && !error.Contains("secret-fixture-key"), "Useful provider error missing or credential exposed.");
         await api.GenerateAsync("I04-attempt-1", "An educational historical scene", "4:3", [], files, default, config.DraftImageModel);
         Check(handler.Models.Count == 2, "Rerun retried rejected draft or repurchased saved fallback image.");
+        int callsBeforeWebOnly = handler.Models.Count;
+        using (var webOnlyApi = new ProductionApi(config with { ImageMode = "webOnly" }, "offline", NullLogger.Instance, http))
+        {
+            bool blockedGeneration = false;
+            try { await webOnlyApi.GenerateAsync("I04-attempt-1", "An educational historical scene", "4:3", [], files, default, config.ImageModel); }
+            catch (InvalidOperationException ex) { blockedGeneration = ex.Message.Contains("webOnly"); }
+            Check(blockedGeneration && handler.Models.Count == callsBeforeWebOnly, "webOnly permitted generated cache reuse or a generation request.");
+        }
         await api.GenerateAsync("I04-attempt-1", "A different historical scene", "4:3", [], files, default, config.DraftImageModel);
         Check(handler.Models.Count == 4, "Rejection from different prompt was reused.");
 

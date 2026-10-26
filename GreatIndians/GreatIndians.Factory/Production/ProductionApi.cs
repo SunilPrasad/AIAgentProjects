@@ -108,6 +108,8 @@ public sealed class ProductionApi : IDisposable
         string stage, string prompt, string aspectRatio, IReadOnlyList<string> references,
         Artifacts files, CancellationToken ct, string? model = null)
     {
+        if (config.ImageMode == "webOnly")
+            throw new InvalidOperationException("Image generation and reuse of generated-image caches are disabled by imageMode=webOnly. Only reviewed Wikimedia photographs are permitted.");
         var imageModel = model ?? config.ImageModel;
         var referenceHashes = references.Select(ManuscriptReader.HashFile).ToArray();
         // Property name kept as ImageModel so receipts made before per-attempt models remain reusable.

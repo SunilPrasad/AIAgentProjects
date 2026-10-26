@@ -49,12 +49,15 @@ public static class ProductionDesign
             $"Retained section headings: left-aligned {FontFamily} Bold {HeadingSize}pt {Body}, {HeadingLeading}pt leading, kept with their following paragraph. " +
             $"Chapter number: Bold {ChapterSize}pt {Gold}. Page numbers: Regular {PageNumberSize}pt {PageNumber}. " +
             "Embedded fonts, selectable unchanged paragraphs, mirrored margins and a safe gutter. " +
-            "Generated illustrations: vibrant cinematic nonfiction children's storybook art with rich watercolour-and-gouache textures, " +
+            (config.ImageMode == "webOnly"
+                ? "Reviewed Wikimedia photographs only; AI image generation disabled. Preserve photographic appearance and authentic incidental inscriptions; " +
+                    "do not recolour, repaint, stretch or destructively crop. Complete important features and print-safe placement are required."
+                : "Generated illustrations: vibrant cinematic nonfiction children's storybook art with rich watercolour-and-gouache textures, " +
             "expressive characters, warm golden sunlight, luminous skies, lush foliage and atmospheric depth. " +
             $"Art palette: sky {Sky}, turquoise {Turquoise}, emerald {Emerald}, sunshine {Sunshine}, coral {Coral}. " +
             (ContentProfiles.IsPerson(config.Profile)
                 ? "Complete heads/headwear/hands/important objects; 10–15% headroom; "
                 : "Complete important structures/objects; consistent architecture and safe surrounding space; ") +
             "no generated artwork text or destructive cropping. " +
-            (config.ImageMode == "generated" ? "" : "Real photographs keep their photographic appearance and authentic incidental inscriptions; do not recolour/repaint them to match the generated palette.");
+            (config.ImageMode == "generated" ? "" : "Real photographs keep their photographic appearance and authentic incidental inscriptions; do not recolour/repaint them to match the generated palette."));
 }

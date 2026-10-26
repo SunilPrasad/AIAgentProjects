@@ -8,7 +8,7 @@ The writing and illustration commands can now share one book definition. Existin
 |---|---|---|
 | `books/ancient-india.json` | Biography | Generated illustrations |
 | `books/modern-india.json` | Biography | Prefer suitable real photographs; otherwise generate |
-| `books/indian-science.json` | Scientific biography | Prefer suitable real photographs; otherwise generate |
+| `books/indian-science.json` | Scientific biography | Wikimedia photographs only; generation disabled |
 | `books/sacred-temples.json` | Temple | Prefer suitable real photographs; otherwise generate |
 
 All forty requested subjects are included, in the requested chapter order. Each has a stable ID, display name, optional aliases, an image-search query and an optional curated Commons file list. Chapter numbering is the order in the definition. Output is isolated under `output/books/<book-id>/`; caches cannot accidentally cross book roots.
@@ -98,6 +98,8 @@ Paths in a definition resolve relative to the definition file. Omitted style set
 | `webOnly` | Use only suitable reviewed real images; stop if none passes, without purchasing generated artwork |
 
 Automated web sourcing is deliberately limited to Wikimedia Commons PNG/JPEG originals and Commons-reported reusable license metadata. This is not unrestricted image scraping or Google Images downloading.
+
+The Indian Science collection uses `production.imageMode: "webOnly"` for every chapter. New scientific-biography collections created by discovery also default to this mode; existing definitions keep their explicitly configured policy. In `webOnly`, both image-generation requests and reuse of generated-image caches are blocked at the API layer. Missing or rejected photographs stop the chapter with a report instead of purchasing generated art. This is configurable per book; `preferWeb` deliberately permits generated fallback, while `generated` deliberately requests AI artwork. Planning and vision review still use paid models even when image generation is disabled.
 
 Before scene planning, production now tries a plain name without honorifics, the configured subject name, aliases and the optional image query (at most six distinct queries). It also resolves images embedded in likely English Wikipedia articles to their original Commons file metadata. No extra `scientist portrait` terms or forced `filetype:bitmap` suffix are added to plain-name searches. Curated `commonsFiles` are checked first and combined with discovered candidates. Candidates are deduplicated by original URL; metadata searches refresh daily, including empty results, and old narrow-query empty caches cannot block alternatives. Each query/failure and the resulting candidate list are recorded in `provenance/commons-candidates.json`.
 
