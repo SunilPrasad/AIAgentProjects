@@ -102,6 +102,7 @@ internal static class GenericBookTests
         var pipeline = new IllustratedPipeline(config, "OFFLINE FIXTURE", api, NullLogger.Instance, web);
         var final = await pipeline.RunAsync(manuscript, Path.Combine(root, "web-success"), CancellationToken.None);
         Check(File.Exists(final) && modelHandler.ImageCalls == 0, "webOnly bought generated art or failed to deliver.");
+        Check(modelHandler.SawPhotoInventory, "Planner did not receive available photographs before describing scenes.");
         var run = Path.GetDirectoryName(final)!;
         var layout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(run, "layout-1.json")));
         Check(layout.Text.Any(t => t.Kind == "image-credit" && t.Text.Contains("Fixture photographer")), "Photographer credit missing from PDF.");
@@ -194,7 +195,9 @@ internal static class GenericBookTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
-            HttpContent body = request.RequestUri!.Host == "commons.wikimedia.org"
+            HttpContent body = request.RequestUri!.Host == "en.wikipedia.org"
+                ? new StringContent("{}", Encoding.UTF8, "application/json")
+                : request.RequestUri.Host == "commons.wikimedia.org"
                 ? new StringContent(Empty ? "{}" : Metadata(), Encoding.UTF8, "application/json")
                 : new ByteArrayContent(ImageBytes());
             if (body is ByteArrayContent) body.Headers.ContentType = new("image/png");
@@ -206,6 +209,7 @@ internal static class GenericBookTests
     {
         public int Calls, ImageCalls;
         public bool RejectWebPhoto;
+        public bool SawPhotoInventory;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
@@ -219,6 +223,9 @@ internal static class GenericBookTests
             else
             {
                 string? name = json.RootElement.GetProperty("response_format").GetProperty("json_schema").GetProperty("name").GetString();
+                if (name == "IllustrationPlan")
+                    SawPhotoInventory = json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text")
+                        .GetString()!.Contains("availableWebImages", StringComparison.Ordinal);
                 object answer = name switch
                 {
                     "IllustrationPlan" => Plan(manuscript),

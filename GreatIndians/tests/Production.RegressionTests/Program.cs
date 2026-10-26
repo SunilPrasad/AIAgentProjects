@@ -5,6 +5,8 @@ using GreatIndians.Factory.Production;
 using SkiaSharp;
 
 // Native layout and acceptance-gate regression tests. No API client or network calls.
+await CommonsSearchTests.RunAsync();
+if (args.Contains("--commons-only")) return;
 await ApiRecoveryTests.RunAsync();
 if (args.Contains("--api-only")) return;
 HeadingLayoutTests.Run();

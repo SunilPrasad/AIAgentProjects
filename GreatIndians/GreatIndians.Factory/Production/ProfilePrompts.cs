@@ -64,6 +64,12 @@ public static class ProfilePrompts
             "fictional wardrobe, a 3:2 crop or matching the opening person's apparent age across archival dates. " +
             "Score style for readable photographic presentation and appropriateness to this book. Check exact subject/site, " +
             "passage alignment, usable sharpness, complete important features and lack of added watermark/caption/overlay. " +
+            "Judge passage alignment against the actual supplied manuscript paragraphs; a proposed generated-scene description is not an exact photographic checklist. " +
+            "A genuine photo of relevant apparatus can illustrate the corresponding scientific work without showing the scientist performing an experiment. " +
+            "A portrait can introduce the person and an institute photo can illustrate the institute's legacy, without pretending to record an unphotographed event. " +
+            "Do not demand generated wave effects, imagined assistants, fictional poses, wardrobe or lighting in documentary photographs. " +
+            "When a photo depicts only relevant apparatus or a site, no main person is required: assess its actual identity and important features. " +
+            "Do not accept a different person's portrait, unrelated equipment or an incorrect building merely because metadata names the subject. " +
             "Authentic incidental lettering or inscriptions may remain: noGeneratedText means no added/generated text, " +
             "not erasing real inscriptions. Do not mistake source metadata for proof of visual identity. " +
             "A contemporary temple photo cannot prove a past appearance or illustrate an ancient event as documentary evidence. " +

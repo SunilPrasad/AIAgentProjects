@@ -99,9 +99,13 @@ Paths in a definition resolve relative to the definition file. Omitted style set
 
 Automated web sourcing is deliberately limited to Wikimedia Commons PNG/JPEG originals and Commons-reported reusable license metadata. This is not unrestricted image scraping or Google Images downloading.
 
+Before scene planning, production now tries a plain name without honorifics, the configured subject name, aliases and the optional image query (at most six distinct queries). It also resolves images embedded in likely English Wikipedia articles to their original Commons file metadata. No extra `scientist portrait` terms or forced `filetype:bitmap` suffix are added to plain-name searches. Curated `commonsFiles` are checked first and combined with discovered candidates. Candidates are deduplicated by original URL; metadata searches refresh daily, including empty results, and old narrow-query empty caches cannot block alternatives. Each query/failure and the resulting candidate list are recorded in `provenance/commons-candidates.json`.
+
+The planner receives a bounded inventory of available photos before describing scenes. It should use portraits for introductions, real apparatus for corresponding research, and appropriate site/institute photographs for related passages. Photo reviewers assess the actual manuscript passage rather than requiring the exact composition of an imagined generated scene. Candidates are ranked for passage relevance before applying `maxWebCandidates`, which still bounds paid image reviews per scene. Documentary identity, authenticity, source/license metadata, resolution and PDF checks remain mandatory. `preferWeb` generates only if no reviewed candidate passes; `webOnly` never purchases generated images and stops before planning if discovery finds no candidates.
+
 The importer requires an explicit Creative Commons license URL for CC BY, CC BY-SA, CC0 or Public Domain Mark, with a named creator. It rejects unsupported/missing metadata, noncommercial/no-derivatives/fair-use labels, restriction notices, unsupported formats, unsafe hosts, undersized images and extreme dimensions. Some public-domain files lack this metadata and will be skipped; the tool does not guess their rights. Commons metadata is evidence, not a legal guarantee: inspect the original file page and applicable terms before publication.
 
-Set `imageQuery` to disambiguate a site/person. For example, the Jagannath query explicitly names Puri, and the Venkateswara query names Tirumala. Search results are candidates, not proof of identity. To select known real files instead of search, provide their exact Commons titles:
+Set `imageQuery` to disambiguate a site/person. For example, the Jagannath query explicitly names Puri, and the Venkateswara query names Tirumala. Search results are candidates, not proof of identity. To prioritise known real files in the candidate inventory, provide their exact Commons titles:
 
 ```json
 {

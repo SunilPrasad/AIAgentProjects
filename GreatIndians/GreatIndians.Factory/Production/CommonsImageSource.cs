@@ -24,6 +24,9 @@ public sealed record WebImageReview(
 /// <summary>Restricts automated reuse to raster files with explicit Commons attribution/license metadata.</summary>
 public sealed class CommonsImageSource : IDisposable
 {
+    public const string SearchVersion = "commons-wikipedia-names-v2";
+    private const string MetadataEndpoint = "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo" +
+        "&iiprop=url%7Csize%7Cmime%7Cextmetadata&iiextmetadatafilter=Artist%7CCredit%7CLicenseShortName%7CLicenseUrl%7CRestrictions%7CImageDescription%7CCategories&";
     private readonly HttpClient http;
     private readonly bool ownsHttp;
     public CommonsImageSource(HttpClient? client = null)
@@ -47,20 +50,76 @@ public sealed class CommonsImageSource : IDisposable
     public async Task<List<CommonsCandidate>> FindAsync(Manuscript manuscript, SubjectDefinition? subject,
         Artifacts files, CancellationToken ct)
     {
-        string query = string.IsNullOrWhiteSpace(subject?.ImageQuery) ? $"\"{manuscript.Subject}\"" : subject.ImageQuery;
-        string parameters = subject?.CommonsFiles is { Length: > 0 }
-            ? "titles=" + Uri.EscapeDataString(string.Join('|', subject.CommonsFiles))
-            : "generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch=" + Uri.EscapeDataString(query + " filetype:bitmap");
-        var uri = new Uri("https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo" +
-            "&iiprop=url%7Csize%7Cmime%7Cextmetadata&iiextmetadatafilter=Artist%7CCredit%7CLicenseShortName%7CLicenseUrl%7CRestrictions%7CImageDescription%7CCategories" +
-            "&" + parameters);
-        var raw = await files.Cached("cache/commons-" + Data.Hash(uri.AbsoluteUri)[..16] + ".json", uri.AbsoluteUri,
-            async () => System.Text.Encoding.UTF8.GetString(await GetAsync(uri, 2_000_000, false, ct)));
-        using var doc = JsonDocument.Parse(raw);
-        if (doc.RootElement.TryGetProperty("error", out _)) throw new InvalidDataException("Commons search returned an error.");
-        var results = Parse(doc.RootElement);
-        await files.Save("provenance/commons-candidates.json", Data.Write(new { query, candidates = results }));
+        var results = new List<CommonsCandidate>();
+        var attempts = new List<object>();
+        var queries = SearchQueries(manuscript.Subject, subject);
+        async Task<JsonElement?> Query(Uri uri, string purpose)
+        {
+            try
+            {
+                // Refresh metadata daily, including empty results. Downloads keep their content-hash caches.
+                string raw = await files.Cached("cache/web-images-v2-" + Data.Hash(uri.AbsoluteUri)[..16] + ".json",
+                    Data.Write(new { SearchVersion, url = uri.AbsoluteUri, day = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd") }),
+                    async () => System.Text.Encoding.UTF8.GetString(await GetAsync(uri, 2_000_000, false, ct)));
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.TryGetProperty("error", out _)) throw new InvalidDataException("Image metadata API returned an error.");
+                attempts.Add(new { purpose, url = uri.AbsoluteUri, status = "OK" });
+                return doc.RootElement.Clone();
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or InvalidDataException or TaskCanceledException or JsonException)
+            {
+                attempts.Add(new { purpose, url = uri.AbsoluteUri, status = "UNAVAILABLE", reason = ex.Message });
+                return null;
+            }
+        }
+        async Task AddFiles(string[] titles, string purpose)
+        {
+            if (titles.Length == 0) return;
+            var response = await Query(new Uri(MetadataEndpoint + "titles=" + Uri.EscapeDataString(string.Join('|', titles.Take(40)))), purpose);
+            if (response is { } json) results.AddRange(Parse(json));
+        }
+        if (subject?.CommonsFiles is { Length: > 0 }) await AddFiles(subject.CommonsFiles, "curated Commons files");
+
+        // A plain name must not acquire extra portrait/scientist terms or the old restrictive bitmap suffix.
+        foreach (string query in queries)
+        {
+            var response = await Query(new Uri(MetadataEndpoint + "generator=search&gsrnamespace=6&gsrlimit=20&gsrsearch=" + Uri.EscapeDataString(query)),
+                "Commons name search: " + query);
+            if (response is { } json) results.AddRange(Parse(json));
+            if (results.Select(c => c.DownloadUrl).Distinct().Count() >= 40) break;
+        }
+
+        // Resolve the actual files embedded in likely Wikipedia articles, then ask Commons for their original metadata.
+        var articleTitles = queries.Take(4).ToArray();
+        var wikipedia = await Query(new Uri("https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1&prop=images&imlimit=40&titles=" +
+            Uri.EscapeDataString(string.Join('|', articleTitles))), "Wikipedia article images");
+        if (wikipedia is { } article && article.TryGetProperty("query", out var q) && q.TryGetProperty("pages", out var pages))
+        {
+            var titles = pages.EnumerateArray().Where(p => p.TryGetProperty("images", out _))
+                .SelectMany(p => p.GetProperty("images").EnumerateArray())
+                .Select(i => i.TryGetProperty("title", out var title) ? title.GetString() ?? "" : "")
+                .Where(t => t.StartsWith("File:", StringComparison.Ordinal) && Regex.IsMatch(t, @"\.(jpe?g|png)$", RegexOptions.IgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase).Take(40).ToArray();
+            await AddFiles(titles, "original Commons files linked by Wikipedia");
+        }
+        results = results.DistinctBy(c => c.DownloadUrl).Take(80).ToList();
+        await files.Save("provenance/commons-candidates.json", Data.Write(new { SearchVersion, queries, attempts, candidates = results }));
         return results;
+    }
+
+    public static string[] SearchQueries(string name, SubjectDefinition? subject)
+    {
+        static string PlainName(string value) => Regex.Replace(value.Trim(), @"^(?:(?:Sir|Dr\.?|Prof\.?|Professor|Acharya|Sri|Shri)\s+)+", "", RegexOptions.IgnoreCase);
+        return new[] { PlainName(subject?.Name ?? name), PlainName(name), subject?.Name ?? name }
+            .Concat((subject?.Aliases ?? []).Take(3).Select(PlainName)).Append(subject?.ImageQuery ?? "")
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).Take(6).ToArray();
+    }
+
+    public static IEnumerable<CommonsCandidate> RankForPassage(IEnumerable<CommonsCandidate> candidates, string passage, string scene)
+    {
+        var words = Regex.Matches((passage + " " + scene).ToLowerInvariant(), @"[\p{L}\p{N}]{4,}")
+            .Select(m => m.Value).Distinct().ToArray();
+        return candidates.OrderByDescending(c => words.Count(word => (c.Title + " " + c.Description).Contains(word, StringComparison.OrdinalIgnoreCase)));
     }
 
     public static List<CommonsCandidate> Parse(JsonElement root)
@@ -129,7 +188,10 @@ public sealed class CommonsImageSource : IDisposable
     {
         for (int redirects = 0; redirects < 4; redirects++)
         {
-            if (!AllowedUri(uri.AbsoluteUri)) throw new InvalidDataException("Only public Wikimedia Commons/image hosts are supported.");
+            bool wikipediaApi = uri.Scheme == "https" && uri.Port == 443 && string.IsNullOrEmpty(uri.UserInfo)
+                && uri.Host == "en.wikipedia.org" && uri.AbsolutePath == "/w/api.php";
+            if (!AllowedUri(uri.AbsoluteUri) && !(wikipediaApi && !image))
+                throw new InvalidDataException("Only Wikimedia Commons files and the English Wikipedia metadata API are supported.");
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.UserAgent.ParseAdd("GreatIndiansPublishing/1.0 (+https://github.com/SunilPrasad/AIAgentProjects)");
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
