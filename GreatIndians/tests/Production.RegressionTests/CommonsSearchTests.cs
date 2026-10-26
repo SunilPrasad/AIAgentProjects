@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using GreatIndians.Factory;
 using GreatIndians.Factory.Production;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -48,6 +49,29 @@ internal static class CommonsSearchTests
             "Jagadish Chandra Bose was born and attended school", "Bose standing with microwave apparatus and crescograph", preferPortrait: true).First() == archivalPortrait,
             "Opening portrait was outranked by apparatus or cropped duplicate variants.");
         Check(!CommonsImageSource.AllowedUri("https://en.wikipedia.org/w/api.php"), "Wikipedia metadata host was allowed as an image download source.");
+        var pd = JsonSerializer.SerializeToNode(Handler.Metadata("Sir CV Raman", "Historical portrait"))!;
+        var rights = pd["query"]!["pages"]![0]!["imageinfo"]![0]!["extmetadata"]!.AsObject();
+        rights["LicenseShortName"]!["value"] = "Public domain";
+        rights.Remove("LicenseUrl");
+        rights["Copyrighted"] = new JsonObject { ["value"] = "False" };
+        rights["UsageTerms"] = new JsonObject { ["value"] = "Public domain" };
+        using (var doc = JsonDocument.Parse(pd.ToJsonString()))
+        {
+            var declared = CommonsImageSource.Parse(doc.RootElement).Single();
+            Check(declared.License == "Public domain" && declared.LicenseUrl == declared.SourceUrl + "#Licensing"
+                && !declared.LicenseUrl.Contains("creativecommons.org"), "Public-domain declaration was rejected or a CC licence was invented.");
+        }
+        rights["Copyrighted"]!["value"] = "True";
+        using (var doc = JsonDocument.Parse(pd.ToJsonString()))
+            Check(CommonsImageSource.Parse(doc.RootElement).Count == 0, "Conflicting copyright status was accepted as public domain.");
+        rights.Remove("Copyrighted");
+        using (var doc = JsonDocument.Parse(pd.ToJsonString()))
+            Check(CommonsImageSource.Parse(doc.RootElement).Count == 0, "Uncorroborated public-domain label was accepted.");
+        var group = portrait with { Title = "File:Niels Bohr with C. V. Raman.jpg" };
+        var nobelPortrait = portrait with { Title = "File:Sir CV Raman.JPG", Description = "Dr. Chandrasekhara Venkata Raman" };
+        var modernEvent = portrait with { Title = "File:Science Walk 24(1) 9.jpg", Description = "Modern commemoration of Raman" };
+        Check(CommonsImageSource.RankForPassage([group, modernEvent, nobelPortrait], "Raman was born", "Introduction", preferPortrait: true).First() == nobelPortrait,
+            "Actual named portrait did not outrank group and modern-event photographs.");
 
         var unavailable = new Handler { WikipediaUnavailable = true };
         using var unavailableHttp = new HttpClient(unavailable);
@@ -89,7 +113,7 @@ internal static class CommonsSearchTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             { Content = new StringContent(JsonSerializer.Serialize(answer), Encoding.UTF8, "application/json") });
         }
-        private static object Metadata(string title, string description) => new { query = new { pages = new[] { new
+        public static object Metadata(string title, string description) => new { query = new { pages = new[] { new
         {
             pageid = 123, title = "File:" + title + ".jpg", imageinfo = new[] { new
             {

@@ -10,8 +10,9 @@ public sealed record WebImageCredit(string Title, string Creator, string License
     string SourceUrl, string DownloadUrl, string CreditLine, string OriginalSha256)
 {
     public string Text(string sceneId) => $"{sceneId}: {Title}. Creator: {Creator}. {CreditLine} " +
-        $"License: {License} ({LicenseUrl}). Source: {SourceUrl}. " +
-        "Original photograph; encoding and proportional print sizing only. Image remains under its stated source license.";
+        (License == "Public domain" ? $"Rights: Public domain, as reported by Wikimedia Commons ({LicenseUrl}). " : $"License: {License} ({LicenseUrl}). ") +
+        $"Source: {SourceUrl}. Original photograph; encoding and proportional print sizing only. " +
+        (License == "Public domain" ? "Source public-domain declaration retained." : "Image remains under its stated source license.");
 }
 public sealed record CommonsCandidate(string Title, string Creator, string License, string LicenseUrl,
     string SourceUrl, string DownloadUrl, string CreditLine, int Width, int Height, string Description = "");
@@ -24,9 +25,9 @@ public sealed record WebImageReview(
 /// <summary>Restricts automated reuse to raster files with explicit Commons attribution/license metadata.</summary>
 public sealed class CommonsImageSource : IDisposable
 {
-    public const string SearchVersion = "commons-wikipedia-names-v2";
+    public const string SearchVersion = "commons-wikipedia-rights-v3";
     private const string MetadataEndpoint = "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo" +
-        "&iiprop=url%7Csize%7Cmime%7Cextmetadata&iiextmetadatafilter=Artist%7CCredit%7CLicenseShortName%7CLicenseUrl%7CRestrictions%7CImageDescription%7CCategories&";
+        "&iiprop=url%7Csize%7Cmime%7Cextmetadata&iiextmetadatafilter=Artist%7CCredit%7CLicenseShortName%7CLicenseUrl%7CRestrictions%7CImageDescription%7CCategories%7CCopyrighted%7CUsageTerms&";
     private readonly HttpClient http;
     private readonly bool ownsHttp;
     public CommonsImageSource(HttpClient? client = null)
@@ -126,7 +127,9 @@ public sealed class CommonsImageSource : IDisposable
     private static int PortraitPriority(CommonsCandidate candidate)
     {
         string title = candidate.Title.Replace('_', ' ');
-        if (Regex.IsMatch(title, @"\b(apparatus|crescograph|equipment|projector|museum|institute|institution|college|building|bust|statue|sculpture|memorial|stamp|signature|painting|drawing|bedroom)\b", RegexOptions.IgnoreCase)) return -1;
+        if (Regex.IsMatch(title, @"\b(apparatus|crescograph|equipment|projector|museum|institute|institution|college|building|bust|statue|sculpture|memorial|stamp|signature|painting|drawing|bedroom|walk|participants|celebration)\b", RegexOptions.IgnoreCase)) return -1;
+        if (Regex.IsMatch(title, @"\b(with|mit|pupils|group)\b", RegexOptions.IgnoreCase)) return 0;
+        if (Regex.IsMatch(title, @"^File:(Sir|Dr\.?|Professor)\s", RegexOptions.IgnoreCase)) return 2;
         if (Regex.IsMatch(title + " " + candidate.Description, @"\b(portrait|head[- ]and[- ]shoulders)\b", RegexOptions.IgnoreCase)) return 2;
         return 1; // Plain named archival photographs outrank apparatus even when their captions are shorter.
     }
@@ -143,18 +146,26 @@ public sealed class CommonsImageSource : IDisposable
             string Field(string key) => metadata.TryGetProperty(key, out var value) && value.TryGetProperty("value", out var text)
                 ? Plain(text.GetString() ?? "") : "";
             string license = Field("LicenseShortName"), licenseUrl = Field("LicenseUrl"), creator = Field("Artist");
+            string sourceUrl = "https://commons.wikimedia.org/?curid=" + page.GetProperty("pageid").GetInt64();
+            // Commons public-domain declarations do not require a Creative Commons licence URL.
+            // Require three matching structured fields; keep the actual declaration page as the rights reference.
+            bool publicDomain = string.IsNullOrWhiteSpace(licenseUrl)
+                && license.Equals("Public domain", StringComparison.OrdinalIgnoreCase)
+                && Field("UsageTerms").Equals("Public domain", StringComparison.OrdinalIgnoreCase)
+                && Field("Copyrighted").Equals("False", StringComparison.OrdinalIgnoreCase);
+            if (publicDomain) { license = "Public domain"; licenseUrl = sourceUrl + "#Licensing"; }
             string url = image.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
             int width = image.TryGetProperty("width", out var w) ? w.GetInt32() : 0;
             int height = image.TryGetProperty("height", out var h) ? h.GetInt32() : 0;
             string mime = image.TryGetProperty("mime", out var m) ? m.GetString() ?? "" : "";
-            if (!ReusableLicense(license, licenseUrl) || string.IsNullOrWhiteSpace(creator) || creator.Length > 4000
+            if (!(publicDomain || ReusableLicense(license, licenseUrl)) || string.IsNullOrWhiteSpace(creator) || creator.Length > 4000
                 || Regex.IsMatch(Field("Categories") + " " + Field("ImageDescription"), "(?i)\\b(ai[- ]generated|stable diffusion|midjourney|digital reconstruction)\\b")
                 || !string.IsNullOrWhiteSpace(Field("Restrictions")) || !AllowedUri(url)
                 || new Uri(url).Host != "upload.wikimedia.org" || mime is not ("image/jpeg" or "image/png")
                 || Math.Min(width, height) < 768 || Math.Max(width, height) > 12000
                 || (double)width / height is < 0.333 or > 3) continue;
             result.Add(new CommonsCandidate(Plain(page.GetProperty("title").GetString() ?? ""), creator, license, licenseUrl,
-                "https://commons.wikimedia.org/?curid=" + page.GetProperty("pageid").GetInt64(), url, Field("Credit"), width, height,
+                sourceUrl, url, Field("Credit"), width, height,
                 Field("ImageDescription")[..Math.Min(Field("ImageDescription").Length, 8000)]));
         }
         return result;

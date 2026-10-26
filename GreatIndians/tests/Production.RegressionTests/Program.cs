@@ -5,6 +5,14 @@ using GreatIndians.Factory.Production;
 using SkiaSharp;
 
 // Native layout and acceptance-gate regression tests. No API client or network calls.
+if (args.FirstOrDefault() == "--commons-metadata")
+{
+    if (args.Length != 2) throw new ArgumentException("--commons-metadata <saved-Commons-API-response.json>");
+    using var metadata = JsonDocument.Parse(File.ReadAllText(args[1]));
+    foreach (var candidate in CommonsImageSource.Parse(metadata.RootElement))
+        Console.WriteLine($"ACCEPTED CANDIDATE: {candidate.Title}; {candidate.Width}x{candidate.Height}; {candidate.License}; rights reference={candidate.LicenseUrl}");
+    return;
+}
 PageImageContextTests.Run();
 if (args.FirstOrDefault() == "--saved-layout")
 {
