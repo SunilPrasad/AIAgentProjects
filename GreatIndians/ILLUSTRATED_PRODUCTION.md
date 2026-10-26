@@ -82,8 +82,18 @@ EPUB uses real XHTML paragraphs, emphasis, responsive images, alt text and navig
 All calls use one OpenRouter key. Defaults:
 
 - Planning: `openai/gpt-4.1`.
-- Artwork: `google/gemini-3-pro-image`, 2K.
-- Image and rendered-page review: `anthropic/claude-sonnet-4.5`.
+- Artwork: `google/gemini-3-pro-image`, 2K. Later scenes first try the cheaper `draftImageModel` (`google/gemini-nano-banana-2.1`, about a quarter of the price per image). Retries, and always the final attempt, use `imageModel`. Each candidate faces the same scored review, so the acceptance bar does not change. Set `draftModelForOpening: true` to draft I01 as well, or `draftImageModel: ""` to turn drafting off.
+- Image and rendered-page review: `anthropic/claude-sonnet-4.5`. `pageReviewModel` can override the page reviewer.
+
+### Cost controls
+
+- `pageReviewScope: "illustrated"` (the default) sends the opening page, every page with artwork and the final page to the vision reviewer. Text-only pages rely on the exact text comparison, overflow and sparse-page checks. Use `"all"` to review every page.
+- `reviewImageMaxEdge: 1024` sends reduced JPEG copies of artwork to the image reviewer. Print artwork is never altered. Later scenes are style-checked against the accepted I01, which already passed review against the art-style reference.
+- `editNearMissImages: true`: when a rejection was close (within 15 points, right subject and passage), the retry edits that image rather than starting a new composition. This targets local defects such as stray script or a beard.
+- After I01 is accepted, its reviewed `visibleIdentity` (hair, facial hair, age, clothing) is locked into every later prompt. The planner avoids scenes whose writing surfaces face the viewer. These were the two most common reasons for regenerations.
+- `maxBookCostUsd` (0 = unlimited) stops before the next paid image once this invocation has spent that much. Re-running resumes from saved results.
+- The cost of every chapter is printed when it finishes and is written to `status.json`, `QA.md` and `cost-summary.json`. The text factory (`chapters/*.status.json`, `execution-summary.json`) and topic discovery (`status.json`) do the same. Results reused from cache cost nothing and are shown as such.
+- A warning is logged when the image provider returns a smaller resolution than `imageResolution` requested.
 
 The image adapter uses OpenRouter's [dedicated image API](https://openrouter.ai/docs/guides/overview/multimodal/image-generation). Planning/review use structured JSON responses. Provider availability and costs can vary. A four-illustration chapter requires four image generations, four image reviews, a planning call, and one vision call per PDF page; retries add calls. The approved opening image doubles as its character reference, removing one generation and one review (20% fewer base image-generation calls). Google Pro remains the default. Usage returned by OpenRouter is logged. `--inspect` makes no API calls.
 

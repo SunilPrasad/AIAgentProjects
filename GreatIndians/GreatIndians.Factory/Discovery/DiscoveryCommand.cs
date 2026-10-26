@@ -152,13 +152,25 @@ public static class DiscoveryCommand
         using var logging = LoggerFactory.Create(b => b.AddSimpleConsole(o => o.SingleLine = true)
             .AddProvider(new FileLogProvider(Path.Combine(baseRoot, "discovery.log"))));
         var log = logging.CreateLogger("TopicDiscovery");
-        var result = await new TopicDiscoveryPipeline(new OpenRouterDiscoveryClient(key, log), log)
-            .RunAsync(book, settings, profile, root, nonce, ct);
+        var costMark = CostMeter.Mark();
+        TopicDiscoveryResult result;
+        try
+        {
+            result = await new TopicDiscoveryPipeline(new OpenRouterDiscoveryClient(key, log), log)
+                .RunAsync(book, settings, profile, root, nonce, ct);
+        }
+        catch
+        {
+            Console.WriteLine($"Discovery cost before stopping: {CostMeter.Since(costMark).OneLine()}");
+            throw;
+        }
         foreach (var topic in result.Selected) Console.WriteLine($"{topic.YesVotes}/3 — {topic.Candidate.Name}");
         bool changed = !preview && await DiscoveryConfigStore.ApplyAsync(bookPath, original, book, settings, result, ct);
         string status = preview ? "PREVIEW_ONLY" : changed ? "CONFIG_UPDATED" : "CONFIG_UNCHANGED";
-        await Data.SaveAsync(Path.Combine(root, "status.json"), Data.Write(new { status, bookPath, result.Fingerprint }));
+        var cost = CostMeter.Since(costMark);
+        await Data.SaveAsync(Path.Combine(root, "status.json"), Data.Write(new { status, bookPath, result.Fingerprint, costUsd = cost.TotalUsd, cost }));
         Console.WriteLine($"{status}; report: {Path.Combine(root, "selection-report.md")}");
+        Console.WriteLine($"Discovery cost: {cost.OneLine()}");
         return 0;
     }
 }

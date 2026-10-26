@@ -50,7 +50,7 @@ public static class ProfilePrompts
             "ImportantFeaturesVisible means complete important structures/objects. ConsistentCharacter and characterFeaturesMatch mean " +
             "the same recognisable subject/architecture across views. For generated artwork, reject invented architecture, generated text, " +
             "major distortions, unsupported scenes or cropped important features. " +
-            "Use integer styleScore, characterScore and qualityScore 0-100: 70-79 usable, 80-89 strong, 90-100 excellent. " +
+            "Set visibleIdentity to 'not applicable'. Use integer styleScore, characterScore and qualityScore 0-100: 70-79 usable, 80-89 strong, 90-100 excellent. " +
             "The weighted score is 40% style, 30% identity and 30% quality. Every category must be at least 50. " +
             "Use minimumImageScore as the threshold, without demanding perfection. Keep only hard rejection reasons in issues, " +
             "minor improvements in suggestions. Supply specific styleComparison and characterComparison. " +

@@ -2,7 +2,7 @@ namespace GreatIndians.Factory.Production;
 
 public static class ProductionPrompts
 {
-    public const string Version = "scored-review-v5";
+    public const string Version = "scored-review-v6";
     public const string NoText = "NO TEXT, NO LETTERS, NO WORDS, NO CAPTIONS, NO TITLES, NO LABELS, NO WATERMARKS, NO TYPOGRAPHY, NO WRITING, NO NUMBERS, NO LOGOS.";
 
     public static string Plan(string style, int sceneCount) =>
@@ -22,6 +22,10 @@ public static class ProductionPrompts
         "complete head/headwear, recognisable clothing and important hands. Do not use an object-only or distant crowd opening. " +
         "Later scenes use 16:9, 3:2, 4:3 or 1:1 and vary composition. Each scene must depict an activity or context supported by its passage. " +
         "Do not invent childhood events, conversations, royal status or relationships. Do not ask AI to draw formulas, labelled diagrams or an entire page. " +
+        "Image models reliably add fake script to any writing surface that faces the viewer, so never make reading, writing, carving, " +
+        "calculating or drawing in sand the visible focus. Show manuscripts closed, tied or edge-on, inscriptions from a distance or angle, " +
+        "and calculations through gesture, instruments or the night sky rather than marks; add this to the scene's negativeConstraints. " +
+        "In the character reference state hair length, parting and whether the subject is clean-shaven or bearded in plain words. " +
         "Plan safe margins around complete heads, hair, headwear, hands and objects. Editorial concerns go in editorialNotes, never a rewrite. " +
         "Return only the required JSON object.\nVISUAL STYLE:\n" + style;
 
@@ -69,7 +73,10 @@ public static class ProductionPrompts
         "For I01 require one identifiable prominent subject suitable as the later character reference. " +
         "Do not claim undocumented faces or speculative clothing colours are verified historical facts. " +
         "Put ONLY hard rejection reasons in issues. Put minor art-direction differences and improvements in suggestions. " +
-        "Write concrete styleComparison and characterComparison observations. The booleans matchesVisualStyle, " +
+        "Write concrete styleComparison and characterComparison observations. " +
+        "In visibleIdentity describe only what the main person in the CANDIDATE looks like, in one sentence: apparent age, face shape, " +
+        "skin tone, clean-shaven or the exact facial hair, hair length/parting/tie, headwear and main clothing colours. " +
+        "Write 'no main person' when none is depicted. The booleans matchesVisualStyle, " +
         "referenceColourAndLightMatch, painterlyDetailMatches and characterFeaturesMatch describe close matching, " +
         "but false values for these soft criteria alone do not veto an otherwise acceptable scored image. " +
         "Set approved according to the hard flags and supplied numerical threshold, not perfection. Return only the required JSON.";

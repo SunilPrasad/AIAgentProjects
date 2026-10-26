@@ -23,6 +23,20 @@ public sealed record ProductionConfig
     public string ImageModel { get; init; } = "google/gemini-3-pro-image";
     public string VisionModel { get; init; } = "anthropic/claude-sonnet-4.5";
     public string ImageResolution { get; init; } = "2K";
+    // Cheaper first attempt; later attempts, and always the last, use ImageModel. Every candidate passes the same review gate.
+    // Empty disables it.
+    public string DraftImageModel { get; init; } = "google/gemini-nano-banana-2.1";
+    public int DraftImageAttempts { get; init; } = 1;
+    public bool DraftModelForOpening { get; init; }
+    // A near-miss rejection is retried as an edit of the rejected image rather than a fresh composition.
+    public bool EditNearMissImages { get; init; } = true;
+    // Empty uses VisionModel. "illustrated" reviews the opening, final and illustrated pages; "all" reviews every page.
+    public string PageReviewModel { get; init; } = "";
+    public string PageReviewScope { get; init; } = "illustrated";
+    // Artwork is downscaled only in review requests, never in print output. 0 sends originals.
+    public int ReviewImageMaxEdge { get; init; } = 1024;
+    // 0 means no limit. Production stops before the next paid image once this invocation has spent this much.
+    public decimal MaxBookCostUsd { get; init; }
     public int IllustrationCount { get; init; } = 4;
     public int MaxImageAttempts { get; init; } = 3;
     public int MinimumImageScore { get; init; } = 70;
@@ -53,9 +67,14 @@ public sealed record ProductionConfig
             || FontSize * LineSpacing < 16.5 || FontSize * LineSpacing > 17.5
             || BookPageCountForGutter is < 0 or > 828 || Subjects is not { Length: > 0 }
             || Subjects.Any(string.IsNullOrWhiteSpace) || Subjects.Distinct().Count() != Subjects.Length
-            || new[] { PlannerModel, ImageModel, VisionModel }.Any(model => string.IsNullOrWhiteSpace(model) || !model.Contains('/')))
+            || new[] { PlannerModel, ImageModel, VisionModel }.Any(model => string.IsNullOrWhiteSpace(model) || !model.Contains('/'))
+            || new[] { DraftImageModel, PageReviewModel }.Any(model => model is null || model.Length > 0 && !model.Contains('/'))
+            || DraftImageAttempts < 0
+            || PageReviewScope is not ("all" or "illustrated")
+            || ReviewImageMaxEdge is < 0 or > 0 and < 512 || MaxBookCostUsd < 0)
         {
-            throw new InvalidDataException("Invalid production configuration. Require a supported profile/image mode, named subjects, minimum image score 70–95, 1–7 illustrations, 300+ PPI, 12.1pt text and 16.5–17.5pt leading.");
+            throw new InvalidDataException("Invalid production configuration. Require a supported profile/image mode, named subjects, minimum image score 70–95, 1–7 illustrations, 300+ PPI, 12.1pt text and 16.5–17.5pt leading. " +
+                "draftImageAttempts cannot be negative; pageReviewScope is all or illustrated; reviewImageMaxEdge is 0 or at least 512.");
         }
     }
 }
@@ -121,6 +140,8 @@ public sealed record ImageReview(
     public string StyleComparison { get; init; } = "";
     [JsonRequired]
     public string CharacterComparison { get; init; } = "";
+    // What the main person actually looks like in this image; an accepted I01 locks this identity for later scenes.
+    public string VisibleIdentity { get; init; } = "";
 
     [JsonRequired]
     public int StyleScore { get; init; }

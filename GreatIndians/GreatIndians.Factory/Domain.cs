@@ -75,7 +75,11 @@ public sealed record ChapterState(string Subject, List<Source> Sources, Evidence
 public sealed record ChapterResult(
     string Subject, string Status, string Directory, string? ContentHash, string Reason,
     string? ChapterPath = null, string? ReviewPath = null, int? SelectedPass = null,
-    bool IsFinalGenerated = false, bool PublicationApproved = false);
+    bool IsFinalGenerated = false, bool PublicationApproved = false)
+{
+    // OpenRouter-reported cost of this chapter's model calls during this invocation; cached results cost nothing.
+    public decimal? CostUsd { get; init; }
+}
 public sealed class EditorialException(string message) : Exception(message);
 
 public static class Data

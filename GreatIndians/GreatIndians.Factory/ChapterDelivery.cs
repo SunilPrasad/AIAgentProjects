@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GreatIndians.Factory;
 
-public sealed class ChapterDelivery(string outputDirectory, string chapterName, ILogger log)
+public sealed class ChapterDelivery(string outputDirectory, string chapterName, ILogger log, CostMeter.Position? costMark = null)
 {
     public async Task<ChapterResult> SaveAsync(
         string subject,
@@ -25,7 +25,10 @@ public sealed class ChapterDelivery(string outputDirectory, string chapterName, 
         var reviewPath = Path.Combine(destination, chapterName + "-review.md");
         var result = new ChapterResult(
             subject, status, files.Root, Data.Hash(draft), reason,
-            chapterPath, reviewPath, selectedPass, finalGenerated);
+            chapterPath, reviewPath, selectedPass, finalGenerated)
+        {
+            CostUsd = costMark is null ? null : CostMeter.Since(costMark).TotalUsd
+        };
 
         // The chapter remains clean reading text; review/approval metadata lives alongside it.
         if (updateArchive)
@@ -59,6 +62,10 @@ public sealed class ChapterDelivery(string outputDirectory, string chapterName, 
         report.AppendLine($"- Selected review pass: {selectedPass?.ToString() ?? "not yet reviewed"}");
         report.AppendLine($"- Draft SHA-256: `{result.ContentHash}`");
         report.AppendLine($"- Run artifacts: {files.Root}");
+        if (result.CostUsd is { } cost)
+        {
+            report.AppendLine($"- Model cost for this chapter in this run: {CostSummary.Format(cost)} (cached stages are free)");
+        }
         report.AppendLine("- Human publication approval: **pending**");
         report.AppendLine();
 

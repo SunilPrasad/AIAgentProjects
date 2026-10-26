@@ -7,6 +7,9 @@
   "styleReferenceImage": "assets/reference/art-style-reference.png",
   "plannerModel": "openai/gpt-4.1",
   "imageModel": "google/gemini-3-pro-image",
+  "draftImageModel": "google/gemini-nano-banana-2.1",
+  "draftImageAttempts": 1,
+  "draftModelForOpening": false,
   "visionModel": "anthropic/claude-sonnet-4.5",
   "imageResolution": "2K",
   "illustrationCount": 4,
@@ -18,5 +21,8 @@
   "fontSize": 12.1,
   "lineSpacing": 1.4049586776859504,
   "bookPageCountForGutter": 0,
+  "pageReviewScope": "illustrated",
+  "reviewImageMaxEdge": 1024,
+  "maxBookCostUsd": 0,
   "createEpub": true
 }

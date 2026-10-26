@@ -371,6 +371,7 @@ public sealed class ModelGateway : IDisposable
 
         if (response.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
         {
+            CostMeter.Record(chapter, agent, actualModel, usage);
             var cost = usage.TryGetProperty("cost", out var value)
                 && value.ValueKind == JsonValueKind.Number
                     ? $"{value.GetRawText()} USD (reported by OpenRouter)"

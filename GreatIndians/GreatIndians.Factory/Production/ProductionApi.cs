@@ -35,7 +35,7 @@ public sealed class ProductionApi : IDisposable
 
     public async Task<T> JsonAsync<T>(
         string stage, string model, string instructions, string input,
-        IReadOnlyList<string> images, Artifacts files, CancellationToken ct)
+        IReadOnlyList<string> images, Artifacts files, CancellationToken ct, int maxImageEdge = 0)
     {
         var schema = JsonSchemaExporter.GetJsonSchemaAsNode(Json, typeof(T), new JsonSchemaExporterOptions
         {
@@ -47,7 +47,7 @@ public sealed class ProductionApi : IDisposable
         foreach (var path in images)
         {
             imageHashes.Add(ManuscriptReader.HashFile(path));
-            content.Add(new { type = "image_url", image_url = new { url = DataUrl(path) } });
+            content.Add(new { type = "image_url", image_url = new { url = DataUrl(path, maxImageEdge) } });
         }
         var body = new
         {
@@ -60,7 +60,10 @@ public sealed class ProductionApi : IDisposable
             response_format = new { type = "json_schema", json_schema = new { name = typeof(T).Name, strict = true, schema } },
             provider = new { require_parameters = true }
         };
-        var cacheInput = Data.Write(new { model, instructions, input, imageHashes, schema });
+        // Original image hashes identify the review; the edge limit only changes the transmitted copy.
+        var cacheInput = maxImageEdge > 0
+            ? Data.Write(new { model, instructions, input, imageHashes, maxImageEdge, schema })
+            : Data.Write(new { model, instructions, input, imageHashes, schema });
         var json = await files.Cached($"cache/{stage}.json", cacheInput, async () =>
         {
             await files.Save($"provenance/{stage}-request.json", cacheInput);
@@ -95,10 +98,12 @@ public sealed class ProductionApi : IDisposable
 
     public async Task<string> GenerateAsync(
         string stage, string prompt, string aspectRatio, IReadOnlyList<string> references,
-        Artifacts files, CancellationToken ct)
+        Artifacts files, CancellationToken ct, string? model = null)
     {
+        var imageModel = model ?? config.ImageModel;
         var referenceHashes = references.Select(ManuscriptReader.HashFile).ToArray();
-        var input = Data.Write(new { config.ImageModel, config.ImageResolution, prompt, aspectRatio, referenceHashes });
+        // Property name kept as ImageModel so receipts made before per-attempt models remain reusable.
+        var input = Data.Write(new { ImageModel = imageModel, config.ImageResolution, prompt, aspectRatio, referenceHashes });
         var receiptPath = Path.Combine(files.Root, "cache", stage + "-image.json");
         foreach (var candidateReceipt in new[] { receiptPath }
             .Concat(files.PreviousRoots.Select(root => Path.Combine(root, "cache", stage + "-image.json"))))
@@ -128,13 +133,13 @@ public sealed class ProductionApi : IDisposable
 
         var body = new
         {
-            model = config.ImageModel, prompt, n = 1,
+            model = imageModel, prompt, n = 1,
             resolution = config.ImageResolution, aspect_ratio = aspectRatio, output_format = "png",
             input_references = references.Select(path => new { type = "image_url", image_url = new { url = DataUrl(path) } }).ToArray()
         };
         await files.Save($"provenance/{stage}-request.json", input);
         log.LogInformation("[PDF][{Stage}][GENERATE] OpenRouter/{Model}; aspect={Ratio}; resolution={Resolution}",
-            stage, config.ImageModel, aspectRatio, config.ImageResolution);
+            stage, imageModel, aspectRatio, config.ImageResolution);
         var response = await Post("images", body, ct);
         LogUsage(stage, response);
         var bytes = Convert.FromBase64String(response.GetProperty("data")[0].GetProperty("b64_json").GetString() ?? "");
@@ -142,6 +147,12 @@ public sealed class ProductionApi : IDisposable
         if (bitmap.Width > 12000 || bitmap.Height > 12000)
         {
             throw new InvalidDataException("Generated image dimensions exceed the supported bounds.");
+        }
+        int expectedShortEdge = config.ImageResolution switch { "4K" => 2000, "2K" => 1400, _ => 0 };
+        if (Math.Min(bitmap.Width, bitmap.Height) < expectedShortEdge)
+        {
+            log.LogWarning("[PDF][{Stage}][RESOLUTION] Requested {Resolution} but {Model} returned {Width}x{Height}; the same price was charged",
+                stage, config.ImageResolution, imageModel, bitmap.Width, bitmap.Height);
         }
         using var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100);
         var path = Path.Combine(files.Root, "artwork", stage + ".png");
@@ -197,12 +208,26 @@ public sealed class ProductionApi : IDisposable
     {
         if (response.TryGetProperty("usage", out var usage))
         {
+            CostMeter.Record("PDF", stage, response.TryGetProperty("model", out var model) ? model.GetString() ?? "" : "", usage);
             log.LogInformation("[PDF][{Stage}][USAGE] {Usage}", stage, usage.GetRawText());
         }
     }
 
-    private static string DataUrl(string path)
-        => "data:image/png;base64," + Convert.ToBase64String(File.ReadAllBytes(path));
+    private static string DataUrl(string path) => DataUrl(path, 0);
+
+    // Vision models bill by image area. Review copies are reduced; generation references stay full size.
+    private static string DataUrl(string path, int maxEdge)
+    {
+        var bytes = File.ReadAllBytes(path);
+        if (maxEdge <= 0) return "data:image/png;base64," + Convert.ToBase64String(bytes);
+        using var bitmap = SKBitmap.Decode(bytes) ?? throw new InvalidDataException("Cannot decode review image.");
+        if (Math.Max(bitmap.Width, bitmap.Height) <= maxEdge) return "data:image/png;base64," + Convert.ToBase64String(bytes);
+        double scale = (double)maxEdge / Math.Max(bitmap.Width, bitmap.Height);
+        using var resized = bitmap.Resize(new SKImageInfo((int)Math.Round(bitmap.Width * scale), (int)Math.Round(bitmap.Height * scale)),
+            new SKSamplingOptions(SKCubicResampler.Mitchell)) ?? throw new InvalidDataException("Cannot resize review image.");
+        using var encoded = resized.Encode(SKEncodedImageFormat.Jpeg, 90);
+        return "data:image/jpeg;base64," + Convert.ToBase64String(encoded.ToArray());
+    }
 
     private static void MakeStrict(JsonNode? node)
     {

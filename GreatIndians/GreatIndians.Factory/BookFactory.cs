@@ -25,6 +25,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         }));
         var results = new List<ChapterResult>();
         var chapters = new List<object>();
+        var bookCostMark = CostMeter.Mark();
 
         for (int index = 0; index < config.Personalities.Count; index++)
         {
@@ -39,7 +40,8 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
                 .OrderByDescending(Directory.GetLastWriteTimeUtc)
                 .ToArray();
             var files = new Artifacts(folder, log, previousFolders);
-            var delivery = new ChapterDelivery(output, name, log);
+            var chapterCostMark = CostMeter.Mark();
+            var delivery = new ChapterDelivery(output, name, log, chapterCostMark);
             log.LogInformation("[{Chapter}][Orchestrator][START] Chapter {Index}/{Total}", subject, index + 1, config.Personalities.Count);
             ChapterResult result;
 
@@ -84,7 +86,10 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
                 else
                 {
                     var status = cause is EditorialException ? "BLOCKED_RESEARCH" : "FAILED_BEFORE_DRAFT";
-                    result = new ChapterResult(subject, status, folder, null, reason);
+                    result = new ChapterResult(subject, status, folder, null, reason)
+                    {
+                        CostUsd = CostMeter.Since(chapterCostMark).TotalUsd
+                    };
                     await files.Save("status.json", Data.Write(result));
                     await files.Save("research-notes.md", $"# {subject} — research status\n\n{reason}\n\nNo narrative draft was produced. Source evidence or model access must be resolved; no source material was invented.\n");
                 }
@@ -92,7 +97,12 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
                 log.LogWarning("[{Chapter}][Orchestrator][{Status}] {Reason}", subject, result.Status, reason);
             }
 
+            var chapterCost = CostMeter.Since(chapterCostMark);
+            result = result with { CostUsd = chapterCost.TotalUsd };
             results.Add(result);
+            await files.Save("cost.json", Data.Write(chapterCost));
+            Console.WriteLine($"[{subject}] Chapter text cost: {chapterCost.OneLine()}");
+            Console.WriteLine($"[BOOK] Running text cost: {CostMeter.Since(bookCostMark).Money()} after {index + 1}/{config.Personalities.Count} chapters");
 
             if (result.ChapterPath is not null)
             {
@@ -140,6 +150,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             }
         }
 
+        var bookCost = CostMeter.Since(bookCostMark);
         var drafted = results.Count(result => result.ChapterPath is not null);
         var approved = results.Count(result => result.Status == "AI_APPROVED_PENDING_HUMAN");
         await Data.SaveAsync(Path.Combine(root, "execution-summary.json"), Data.Write(new
@@ -152,6 +163,8 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
             draftsNeedingReview = drafted - approved,
             noDraft = results.Count - drafted,
             bookStatus,
+            costUsd = bookCost.TotalUsd,
+            cost = bookCost,
             publicationApproved = false,
             chaptersDirectory = Path.Combine(output, "final-chapters"),
             chapters = results
@@ -159,6 +172,7 @@ public sealed class BookFactory(BookConfig config, string style, string output, 
         log.LogInformation(
             "[BOOK][Orchestrator][COMPLETE] Requested={Requested}; drafts={Drafted}; AI-approved={Approved}; needs-review={NeedsReview}; no-draft={Missing}; chapters={Folder}",
             results.Count, drafted, approved, drafted - approved, results.Count - drafted, Path.Combine(output, "final-chapters"));
+        Console.WriteLine($"[BOOK] Total text cost: {bookCost.OneLine()}");
         // Exit status reflects chapter production. Editorial approval remains explicit in the report.
         return drafted == results.Count ? 0 : 2;
     }

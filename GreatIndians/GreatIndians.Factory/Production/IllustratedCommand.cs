@@ -77,13 +77,29 @@ public static class IllustratedCommand
         using var api = new ProductionApi(config, key, logger);
         var pipeline = new IllustratedPipeline(config, style, api, logger);
         int failed = 0;
+        var bookCostMark = CostMeter.Mark();
+        pipeline.BudgetMark = bookCostMark;
         foreach (var manuscript in manuscripts)
         {
+            if (config.MaxBookCostUsd > 0 && CostMeter.Since(bookCostMark).TotalUsd >= config.MaxBookCostUsd)
+            {
+                logger.LogWarning("[PDF][BUDGET] {Spent} reached maxBookCostUsd={Limit}; {Subject} and later chapters were not started",
+                    CostMeter.Since(bookCostMark).Money(), config.MaxBookCostUsd, manuscript.Subject);
+                failed++;
+                break;
+            }
+            var chapterCostMark = CostMeter.Mark();
             try { await pipeline.RunAsync(manuscript, output, ct); }
             catch (OperationCanceledException) { throw; }
             catch (Exception exception)
             { failed++; logger.LogError("[PDF][{Subject}][REQUIRES_ATTENTION] {Message}", manuscript.Subject, exception.Message); }
+            Console.WriteLine($"[{manuscript.Subject}] PDF chapter cost: {CostMeter.Since(chapterCostMark).OneLine()}");
+            Console.WriteLine($"[BOOK] Running PDF cost: {CostMeter.Since(bookCostMark).Money()}");
         }
+        var bookCost = CostMeter.Since(bookCostMark);
+        await Data.SaveAsync(Path.Combine(output, "cost-summary.json"),
+            Data.Write(new { costUsd = bookCost.TotalUsd, cost = bookCost, completedAt = DateTimeOffset.UtcNow }));
+        Console.WriteLine($"[BOOK] Total PDF production cost: {bookCost.OneLine()}");
         return failed == 0 ? 0 : 2;
     }
 }

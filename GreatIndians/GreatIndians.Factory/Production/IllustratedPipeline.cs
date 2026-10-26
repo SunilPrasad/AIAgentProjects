@@ -13,6 +13,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
     public async Task<string> RunAsync(Manuscript manuscript, string outputRoot, CancellationToken ct)
     {
         ManuscriptReader.VerifyEditorialApproval(manuscript, config);
+        var costMark = CostMeter.Mark();
         var slug = string.IsNullOrWhiteSpace(manuscript.SubjectId)
             ? System.Text.RegularExpressions.Regex.Replace(manuscript.Subject.ToLowerInvariant(), "[^a-z0-9]+", "-") : manuscript.SubjectId;
         var name = $"chapter_{manuscript.ChapterNumber:D2}_{slug}";
@@ -68,10 +69,15 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             var reference = opening with { Scene = opening.Scene with { Id = "character" } };
             var artwork = new List<AcceptedArtwork> { opening };
             log.LogInformation("[PDF][CHARACTER] Reusing approved I01 as character reference; one separate generation/review avoided");
+            // Most rejected later scenes drifted in hair or facial hair. State the accepted look explicitly in every later prompt.
+            var lockedIdentity = opening.Credit is null && ContentProfiles.IsPerson(config.Profile)
+                && !string.IsNullOrWhiteSpace(opening.Review.VisibleIdentity) ? opening.Review.VisibleIdentity : null;
+            if (lockedIdentity is not null)
+                log.LogInformation("[PDF][CHARACTER][LOCK] {Identity}", lockedIdentity);
             foreach (var scene in plan.Scenes.Skip(1))
             {
                 ct.ThrowIfCancellationRequested();
-                artwork.Add(await CreateReviewed(manuscript, plan.Character, scene, [reference.Path], files, ct, webImages, usedImages));
+                artwork.Add(await CreateReviewed(manuscript, plan.Character, scene, [reference.Path], files, ct, webImages, usedImages, lockedIdentity));
             }
             await files.Save("illustrations.json", Data.Write(new { characterReference = reference, illustrations = artwork }));
 
@@ -115,10 +121,16 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 var pages = ChapterPdfLayout.RenderPages(preview, Path.Combine(root, $"pages-{attempt}"));
                 if (pages.Count != layout.PageCount) throw new ProductionReviewException("Not every PDF page was rendered.");
                 var reviews = new List<PageReview>();
+                var reviewedPages = PagesForVisualReview(layout, config.PageReviewScope);
+                if (reviewedPages.Count < pages.Count)
+                    log.LogInformation("[PDF][LAYOUT] Visual review of pages {Pages}; text-only pages rely on the deterministic text, overflow and sparse-page checks",
+                        string.Join(", ", reviewedPages));
                 for (int index = 0; index < pages.Count; index++)
                 {
                     int number = index + 1;
-                    var review = await api.JsonAsync<PageReview>($"layout-{attempt}-page-{number:D3}", config.VisionModel,
+                    if (!reviewedPages.Contains(number)) continue;
+                    var review = await api.JsonAsync<PageReview>($"layout-{attempt}-page-{number:D3}",
+                        config.PageReviewModel.Length > 0 ? config.PageReviewModel : config.VisionModel,
                         ProductionPrompts.ReviewPage, Data.Write(new
                         {
                             manuscript.Subject, manuscript.Title, pageNumber = number,
@@ -134,7 +146,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     reviews.Add(review);
                     notes.AddRange(review.EditorialNotes);
                 }
-                await files.Save($"page-reviews-{attempt}.json", Data.Write(new { layout.PdfSha256, reviews }));
+                await files.Save($"page-reviews-{attempt}.json", Data.Write(new { layout.PdfSha256, config.PageReviewScope, reviewedPages, reviews }));
                 if (reviews.Any(r => !r.Passes))
                 {
                     if (attempt < config.MaxLayoutAttempts) continue;
@@ -178,11 +190,13 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     status = "PDF_REVIEW_PASSED", sourceSha256 = manuscript.SourceSha256,
                     designVersion = ProductionDesign.Version,
                     pdfSha256 = ManuscriptReader.HashFile(final), final, pages = layout.PageCount,
-                    epubStatus = config.CreateEpub ? "STRUCTURE_CHECKED_PREVIEW_REQUIRED" : "NOT_REQUESTED"
+                    epubStatus = config.CreateEpub ? "STRUCTURE_CHECKED_PREVIEW_REQUIRED" : "NOT_REQUESTED",
+                    costUsd = CostMeter.Since(costMark).TotalUsd, cost = CostMeter.Since(costMark)
                 }));
-                await WriteReport(files, manuscript, "PDF_REVIEW_PASSED", notes, final, layout, checks);
+                await WriteReport(files, manuscript, "PDF_REVIEW_PASSED", notes, final, CostMeter.Since(costMark), layout, checks);
                 File.Copy(Path.Combine(root, "QA.md"), Path.Combine(root, $"chapter_{manuscript.ChapterNumber:D2}_QA.md"), true);
                 log.LogInformation("[PDF][COMPLETE] {Path}", final);
+                log.LogInformation("[PDF][{Subject}][COST] {Cost}", manuscript.Subject, CostMeter.Since(costMark).OneLine());
                 return final;
             }
             throw new ProductionReviewException("No layout passed review.");
@@ -190,16 +204,18 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         catch (Exception ex)
         {
             // Status is authoritative even if a previously reviewed file exists in this same input namespace.
-            await files.Save("status.json", Data.Write(new { status = "REQUIRES_ATTENTION", error = ex.Message }));
+            var cost = CostMeter.Since(costMark);
+            await files.Save("status.json", Data.Write(new { status = "REQUIRES_ATTENTION", error = ex.Message, costUsd = cost.TotalUsd, cost }));
             notes.Add(ex.Message);
-            await WriteReport(files, manuscript, "REQUIRES_ATTENTION", notes, null);
+            await WriteReport(files, manuscript, "REQUIRES_ATTENTION", notes, null, cost);
+            log.LogInformation("[PDF][{Subject}][COST] {Cost} (spent before the chapter stopped)", manuscript.Subject, cost.OneLine());
             throw;
         }
     }
 
     private async Task<AcceptedArtwork> CreateReviewed(Manuscript manuscript, CharacterReference character,
         IllustrationScene scene, string[] references, Artifacts files, CancellationToken ct,
-        CommonsImageSource webImages, HashSet<string> usedImages)
+        CommonsImageSource webImages, HashSet<string> usedImages, string? lockedIdentity = null)
     {
         if (config.ImageMode != "generated")
         {
@@ -210,32 +226,44 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             log.LogInformation("[PDF][{Scene}][WEB FALLBACK] No suitable web image; using configured generation fallback", scene.Id);
         }
         string? correction = null;
+        string? nearMiss = null;
         double bestScore = 0;
         for (int attempt = 1; attempt <= config.MaxImageAttempts; attempt++)
         {
             var stage = $"{scene.Id}-attempt-{attempt}";
             var styleReference = StyleReferencePath;
             string[] styleImages = styleReference is null ? [] : [styleReference];
-            var generationReferences = references.Concat(styleImages).ToArray();
-            var generationRoles = references.Select(_ => "accepted character reference for THIS chapter")
+            string[] editImages = nearMiss is null ? [] : [nearMiss];
+            var generationReferences = editImages.Concat(references).Concat(styleImages).ToArray();
+            var generationRoles = editImages.Select(_ => "REJECTED PREVIOUS ATTEMPT: edit this image. Keep its composition, style and everything " +
+                    "not named in CORRECTIONS; change only what CORRECTIONS lists")
+                .Concat(references.Select(_ => "accepted character reference for THIS chapter"))
                 .Concat(styleImages.Select(_ => "art style and palette only; never identity, historical setting, lettering or cropping")).ToArray();
-            var path = await api.GenerateAsync(stage, ProfilePrompts.Image(config, manuscript, character, scene, style, correction)
+            var model = ImageModelFor(config, attempt, opening: references.Length == 0);
+            EnsureWithinBudget(scene.Id);
+            var path = await api.GenerateAsync(stage,
+                (lockedIdentity is null ? "" : "LOCKED IDENTITY of the main person, taken from the accepted opening image; it overrides the written " +
+                    "character sheet wherever they differ: " + lockedIdentity + "\n")
+                + ProfilePrompts.Image(config, manuscript, character, scene, style, correction)
                 + (references.Length == 0 ? "" : "\nThe accepted CHARACTER image establishes the actual appearance. Preserve it even where the written character sheet differs in age, hair or garments.")
                 + "\nATTACHED IMAGE ROLES IN ORDER (empty means no image references):\n" + Data.Write(generationRoles),
-                scene.AspectRatio, generationReferences, files, ct);
+                scene.AspectRatio, generationReferences, files, ct, model);
             using var bitmap = SKBitmap.Decode(path) ?? throw new InvalidDataException("Cannot decode generated artwork.");
+            // Later scenes are style-checked against I01, which already passed review against the art-style reference.
+            string[] reviewStyleImages = references.Length == 0 ? styleImages : [];
             var review = await api.JsonAsync<ImageReview>(stage + "-review", config.VisionModel,
                 ProfilePrompts.Review(config, false), Data.Write(new
                 {
                     manuscript.Subject, character, scene,
                     config.MinimumImageScore,
                     visualStyle = style,
+                    lockedIdentity,
                     referenceRoles = new[] { "candidate artwork" }
-                        .Concat(references.Select(_ => "accepted character reference for this chapter"))
-                        .Concat(styleImages.Select(_ => "art style/palette only; ignore the example person's identity, props and setting")),
+                        .Concat(references.Select(_ => "accepted character reference for this chapter; its painted finish already passed the art-style review, so use it as the style reference too"))
+                        .Concat(reviewStyleImages.Select(_ => "art style/palette only; ignore the example person's identity, props and setting")),
                     passages = manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)),
                     imageSha256 = ManuscriptReader.HashFile(path)
-                }), new[] { path }.Concat(generationReferences).ToArray(), files, ct);
+                }), new[] { path }.Concat(references).Concat(reviewStyleImages).ToArray(), files, ct, config.ReviewImageMaxEdge);
             var ratio = scene.AspectRatio.Split(':').Select(double.Parse).ToArray();
             var geometry = Math.Min(bitmap.Width, bitmap.Height) >= 768
                 && Math.Abs((double)bitmap.Width / bitmap.Height / (ratio[0] / ratio[1]) - 1) < 0.05;
@@ -251,7 +279,10 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 return new AcceptedArtwork(scene, path, ManuscriptReader.HashFile(path), bitmap.Width, bitmap.Height, review);
             }
             correction = Data.Write(review) + (geometry ? "" : "; Use the requested aspect ratio and at least 768 pixels on the short edge.");
-            log.LogWarning("[PDF][{Scene}][REGENERATE] {Issues}", scene.Id, correction);
+            // A close miss with a local defect (stray script, a beard) is usually fixed by editing, not by a new composition.
+            nearMiss = config.EditNearMissImages && geometry && review.OverallScore >= config.MinimumImageScore - 15
+                && review.StyleScore >= 60 && review.QualityScore >= 50 && review.CorrectSubject && review.MatchesPassage ? path : null;
+            log.LogWarning("[PDF][{Scene}][{Action}] {Issues}", scene.Id, nearMiss is null ? "REGENERATE" : "EDIT", correction);
         }
         throw new ProductionReviewException($"Illustration {scene.Id} did not meet the hard checks and {config.MinimumImageScore}/100 threshold after {config.MaxImageAttempts} attempts. Best reported score: {bestScore}/100. Inspect retained images/reviews; no further attempts were purchased.");
     }
@@ -276,7 +307,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                             sourceMetadata = image.Credit, sourceDescription = candidate.Description,
                             passages = manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)),
                             referenceRoles = new[] { "candidate real web photograph" }.Concat(references.Select(_ => "accepted visual subject reference")),
-                            imageSha256 = hash }), new[] { image.Path }.Concat(references).ToArray(), files, ct);
+                            imageSha256 = hash }), new[] { image.Path }.Concat(references).ToArray(), files, ct, config.ReviewImageMaxEdge);
                     var review = assessment.Review;
                     await files.Save($"reviews/{stage}.json", Data.Write(new { image.Credit, assessment, imageSha256 = hash }));
                     log.LogInformation("[PDF][{Scene}][WEB REVIEW] {Score}/100; photograph={Photo}; no-AI-evidence={Natural}; source={Source}",
@@ -295,6 +326,29 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         { log.LogWarning("[PDF][{Scene}][WEB SEARCH UNAVAILABLE] {Reason}", scene.Id, FailureDetails.Reason(ex)); }
         return null;
     }
+
+    // The draft model gets the first attempt(s); the configured model handles retries and always the final attempt.
+    // Every candidate faces the same review gate, so the cheaper model never lowers the acceptance bar.
+    public static string ImageModelFor(ProductionConfig config, int attempt, bool opening)
+        => config.DraftImageModel.Length > 0 && attempt <= config.DraftImageAttempts && attempt < config.MaxImageAttempts
+            && (!opening || config.DraftModelForOpening) ? config.DraftImageModel : config.ImageModel;
+
+    // Book-level spend is measured from this mark; set by the command that runs every chapter.
+    public CostMeter.Position? BudgetMark { get; set; }
+
+    private void EnsureWithinBudget(string sceneId)
+    {
+        if (config.MaxBookCostUsd > 0 && BudgetMark is not null && CostMeter.Since(BudgetMark).TotalUsd >= config.MaxBookCostUsd)
+            throw new ProductionReviewException($"Cost limit reached before {sceneId}: {CostMeter.Since(BudgetMark).Money()} spent; " +
+                $"maxBookCostUsd={config.MaxBookCostUsd}. No further image was purchased; re-run to resume from saved results.");
+    }
+
+    // Text-only pages are covered by the exact text, overflow and sparse-page checks; the opening and final pages carry the
+    // title and credits, so they are always reviewed visually along with every page that holds artwork.
+    public static SortedSet<int> PagesForVisualReview(LayoutManifest layout, string scope)
+        => scope == "all"
+            ? new SortedSet<int>(Enumerable.Range(1, layout.PageCount))
+            : new SortedSet<int>(layout.Images.Select(image => image.Page).Append(1).Append(layout.PageCount));
 
     public static List<string> ValidatePlan(Manuscript manuscript, IllustrationPlan plan, int count)
     {
@@ -336,7 +390,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
     }
 
     private Task WriteReport(Artifacts files, Manuscript manuscript, string status, List<string> notes, string? final,
-        LayoutManifest? layout = null, LayoutChecks? checks = null)
+        CostSummary cost, LayoutManifest? layout = null, LayoutChecks? checks = null)
         => files.Save("QA.md", $"# Production QA — {manuscript.Subject}\n\nStatus: {status}\n\n" +
             $"Design: {ProductionDesign.Version}\n\n{ProductionDesign.Description(config)}\n\n" +
             $"Image review: {ProductionPrompts.Version}; minimum {config.MinimumImageScore}/100 (40% style, 30% character, 30% quality); every category at least 50; hard defects cannot be averaged away.\n\n" +
@@ -351,7 +405,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             "AI review can miss errors; inspect the retained page proofs before publication.\n\n" +
             "Secondary headings suppressed in the layout only:\n" + string.Join("\n", manuscript.SuppressedHeadings.Select(h => "- " + h.Replace("\n", " "))) +
             "\n\nEditorial notes (manuscript never rewritten):\n" + string.Join("\n", notes.Distinct().Select(n => "- " + n)) +
-            "\n\nPublishing checks still required: full-book assembly, final book page count/gutter, cover/spine, KDP preview and physical proof. " +
+            "\n\n## Cost\n\n" + cost.Markdown() +
+            "\nPublishing checks still required: full-book assembly, final book page count/gutter, cover/spine, KDP preview and physical proof. " +
             (config.CreateEpub
                 ? final is not null
                     ? "EPUB structure/text checked; Kindle Previewer/device review remains required.\n"
