@@ -72,6 +72,10 @@ The optional `discovery` object in a shared book definition controls the jury:
 
 Exactly three different OpenRouter model IDs are required. Each must support strict structured responses. Provider access and availability are verified by the user on their live run. `writing.researchModel` performs the initial bounded web search; the jury receives retained source excerpts. This is six normal jury calls (three nominations plus three ballots), plus research. Invalid responses have bounded retries; unchanged successful stages are cached. There is no automatic repeated voting until agreement, and no guarantee of a fixed dollar cost.
 
+Research retains readable HTML/plain text and extracts text-based PDF sources (maximum 10 MB, 200 pages scanned for text, bounded retained characters). Image-only PDFs, unreadable pages and access-denied responses do not count as evidence. Citation downloads are interleaved by domain, reserving capacity for the required independent domains. If the initial citations are insufficient, discovery performs at most two targeted replacement searches asking for different accessible sources and avoiding previously attempted URLs/domains. Provider retries remain bounded by `writing.maxAttempts`. Successful downloads and each search round are cached separately; an unchanged rerun reuses them. Initial search cache compatibility is preserved, so a previously rejected PDF can now be extracted without repurchasing that search. Do not use `--fresh` just to retry this extraction fix.
+
+Inspect `research/fetch-failures.json` for source URLs and actual failure messages, and `research/search-recovery-1-response.json` / `search-recovery-2-response.json` for any replacement searches. The minimum-domain requirement and all three jury ballots remain mandatory. Download recovery never substitutes uncited model prose for source evidence.
+
 The console prints the full report directory:
 
 ```text

@@ -7,74 +7,120 @@ using Microsoft.Extensions.Logging;
 
 namespace GreatIndians.Factory;
 
-public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
+public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log,
+    Func<Uri, CancellationToken, Task<(string Html, string Url)>>? sourceFetcher = null)
 {
-    public async Task<List<Source>> Gather(string subject, Artifacts files, CancellationToken ct, string? researchPurpose = null)
+    public async Task<List<Source>> Gather(string subject, Artifacts files, CancellationToken ct, string? researchPurpose = null,
+        int replacementSearches = 0)
     {
-        var search = await api.Search(subject, files, ct, researchPurpose);
-        var urls = new List<string>();
-        CollectUrls(search, urls);
+        if (replacementSearches is < 0 or > 2)
+            throw new ArgumentOutOfRangeException(nameof(replacementSearches));
         var result = new List<Source>();
-        foreach (var url in urls.Distinct().Take(20))
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var failures = new List<object>();
+        var failedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var attemptedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int round = 0; round <= replacementSearches; round++)
         {
-            if (result.Count >= config.MaxSources)
+            string? purpose = researchPurpose;
+            if (round > 0)
             {
-                break;
+                purpose = (researchPurpose ?? $"Research {subject}. " + ContentProfiles.Guidance(config.Profile)) +
+                    " REPLACEMENT SEARCH: Earlier citations did not provide enough independently accessible source domains. " +
+                    "Find alternative public, readable HTML or text-based PDF sources on different domains. Avoid login/paywall/anti-bot pages. " +
+                    "Prefer universities, museums, government institutions and accessible scientific biographies. " +
+                    "Avoid these previously attempted URLs: " + string.Join(", ", seen.Order()) +
+                    ". Prefer domains other than: " + string.Join(", ", attemptedHosts.Order()) +
+                    ". These domains had failed downloads: " + string.Join(", ", failedHosts.Order()) + ".";
+                log.LogWarning("[{Chapter}][ResearchAgent][RECOVER] {Domains}/{Required} accessible domains; replacement search {Round}/{Limit}",
+                    subject, result.Select(s => new Uri(s.Url).Host).Distinct(StringComparer.OrdinalIgnoreCase).Count(), config.MinSources, round, replacementSearches);
             }
-
-            try
+            var search = await api.Search(subject, files, ct, purpose, round == 0 ? "search" : $"search-recovery-{round}");
+            var urls = new List<string>();
+            CollectUrls(search, urls);
+            // Try each domain once before its second/third citation, so one host cannot fill the quota.
+            var ordered = urls.Distinct().Where(u => !seen.Contains(u)).GroupBy(u => Uri.TryCreate(u, UriKind.Absolute, out var uri) ? uri.Host : "")
+                .SelectMany(g => g.Select((url, index) => (url, index))).OrderBy(x => x.index).Select(x => x.url).Take(20);
+            foreach (var url in ordered)
             {
-                var fetched = await files.Cached($"cache/source-{Data.Hash(url)[..16]}.json", url, async () =>
+                if (result.Count >= config.MaxSources)
+                    break;
+                seen.Add(url);
+                if (Uri.TryCreate(url, UriKind.Absolute, out var attempted))
+                    attemptedHosts.Add(attempted.Host);
+
+                try
                 {
-                    var uri = new Uri(url);
-                    if (config.AllowedSourceDomains.Count > 0 && !config.AllowedSourceDomains.Any(d => uri.Host.Equals(d, StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith("." + d, StringComparison.OrdinalIgnoreCase)))
+                    var fetched = await files.Cached($"cache/source-{Data.Hash(url)[..16]}.json", url, async () =>
                     {
-                        throw new InvalidDataException("Source outside configured domain list.");
+                        var uri = new Uri(url);
+                        if (config.AllowedSourceDomains.Count > 0 && !config.AllowedSourceDomains.Any(d => uri.Host.Equals(d, StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith("." + d, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            throw new InvalidDataException("Source outside configured domain list.");
+                        }
+
+                        log.LogInformation("[{Chapter}][ResearchAgent][FETCH] Retrieving source {Host}", subject, uri.Host);
+                        var (html, finalUrl) = await (sourceFetcher is null ? Fetch(uri, ct, config.MaxSourceCharacters) : sourceFetcher(uri, ct));
+                        var finalHost = new Uri(finalUrl).Host;
+                        if (config.AllowedSourceDomains.Count > 0 && !config.AllowedSourceDomains.Any(d => finalHost.Equals(d, StringComparison.OrdinalIgnoreCase) || finalHost.EndsWith("." + d, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            throw new InvalidDataException("Redirected source outside configured domain list.");
+                        }
+
+                        using var document = await new HtmlParser().ParseDocumentAsync(html, ct);
+                        foreach (var element in document.QuerySelectorAll("script,style,nav,footer,header,noscript"))
+                        {
+                            element.Remove();
+                        }
+
+                        var text = Data.Normalize((document.QuerySelector("main,article") ?? document.Body)?.TextContent ?? "");
+                        if (text.Length < 400)
+                        {
+                            throw new InvalidDataException("Source has insufficient accessible text.");
+                        }
+
+                        text = text[..Math.Min(text.Length, config.MaxSourceCharacters)];
+                        return Data.Write(new Source("", finalUrl, document.Title ?? uri.Host, text, Data.Hash(text), DateTimeOffset.UtcNow));
+                    });
+                    var source = Data.Read<Source>(fetched) with
+                    {
+                        Id = $"S{result.Count + 1}"
+                    };
+                    if (source.Sha256 != Data.Hash(source.Text))
+                    {
+                        throw new InvalidDataException("Source snapshot hash mismatch.");
                     }
 
-                    log.LogInformation("[{Chapter}][ResearchAgent][FETCH] Retrieving source {Host}", subject, uri.Host);
-                    var (html, finalUrl) = await Fetch(uri, ct);
-                    var finalHost = new Uri(finalUrl).Host;
-                    if (config.AllowedSourceDomains.Count > 0 && !config.AllowedSourceDomains.Any(d => finalHost.Equals(d, StringComparison.OrdinalIgnoreCase) || finalHost.EndsWith("." + d, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        throw new InvalidDataException("Redirected source outside configured domain list.");
-                    }
-
-                    using var document = await new HtmlParser().ParseDocumentAsync(html, ct);
-                    foreach (var element in document.QuerySelectorAll("script,style,nav,footer,header,noscript"))
-                    {
-                        element.Remove();
-                    }
-
-                    var text = Data.Normalize((document.QuerySelector("main,article") ?? document.Body)?.TextContent ?? "");
-                    if (text.Length < 400)
-                    {
-                        throw new InvalidDataException("Source has insufficient accessible text.");
-                    }
-
-                    text = text[..Math.Min(text.Length, config.MaxSourceCharacters)];
-                    return Data.Write(new Source("", finalUrl, document.Title ?? uri.Host, text, Data.Hash(text), DateTimeOffset.UtcNow));
-                });
-                var source = Data.Read<Source>(fetched) with
-                {
-                    Id = $"S{result.Count + 1}"
-                };
-                if (source.Sha256 != Data.Hash(source.Text))
-                {
-                    throw new InvalidDataException("Source snapshot hash mismatch.");
+                    if (result.Any(s => s.Url == source.Url))
+                        continue;
+                    // Reserve capacity for the required independent domains even if search favours one host.
+                    int domains = result.Select(s => new Uri(s.Url).Host).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                    bool existingHost = result.Any(s => new Uri(s.Url).Host.Equals(new Uri(source.Url).Host, StringComparison.OrdinalIgnoreCase));
+                    if (existingHost && result.Count >= config.MaxSources - (config.MinSources - domains))
+                        continue;
+                    result.Add(source);
+                    await files.Save($"research/{source.Id}.json", Data.Write(source));
                 }
-
-                result.Add(source);
-                await files.Save($"research/{source.Id}.json", Data.Write(source));
+                catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or InvalidDataException or TaskCanceledException or UriFormatException or SocketException)
+                {
+                    if (Uri.TryCreate(url, UriKind.Absolute, out var failed))
+                        failedHosts.Add(failed.Host);
+                    failures.Add(new
+                    {
+                        url,
+                        type = ex.GetType().Name,
+                        reason = ex.Message
+                    });
+                    log.LogWarning("[{Chapter}][ResearchAgent][FETCH] Source unavailable ({Type}): {Reason}; trying next source", subject, ex.GetType().Name, ex.Message);
+                }
             }
-            catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or InvalidDataException or TaskCanceledException or UriFormatException or SocketException)
-            {
-                log.LogWarning("[{Chapter}][ResearchAgent][FETCH] Source unavailable ({Type}); trying next source", subject, ex.GetType().Name);
-            }
+            await files.Save("research/fetch-failures.json", Data.Write(failures));
+            if (result.Select(s => new Uri(s.Url).Host).Distinct(StringComparer.OrdinalIgnoreCase).Count() >= config.MinSources)
+                break;
         }
         if (result.Select(s => new Uri(s.Url).Host).Distinct(StringComparer.OrdinalIgnoreCase).Count() < config.MinSources)
         {
-            throw new EditorialException($"Fewer than {config.MinSources} accessible source domains. Research blocked; no invented substitutes.");
+            throw new EditorialException($"Fewer than {config.MinSources} accessible source domains after {replacementSearches} replacement search(es). Retained downloads and search results will be reused. See research/fetch-failures.json.");
         }
 
         await files.Save("research/sources.json", Data.Write(result));
@@ -105,7 +151,7 @@ public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
         }
     }
     // Resolve at connection time to prevent source URLs/redirects reaching local services.
-    private static async Task<(string Html, string Url)> Fetch(Uri uri, CancellationToken ct)
+    private static async Task<(string Html, string Url)> Fetch(Uri uri, CancellationToken ct, int maxCharacters)
     {
         using var handler = new SocketsHttpHandler { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.All };
         handler.ConnectCallback = async (context, token) =>
@@ -145,9 +191,10 @@ public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
             }
             response.EnsureSuccessStatusCode();
             var media = response.Content.Headers.ContentType?.MediaType;
-            if (media is not ("text/html" or "application/xhtml+xml" or "text/plain"))
+            bool pdf = media == "application/pdf";
+            if (!pdf && media is not ("text/html" or "application/xhtml+xml" or "text/plain"))
             {
-                throw new InvalidDataException("Source is not accessible HTML/text; PDFs require a future extractor.");
+                throw new InvalidDataException($"Unsupported source media type: {media ?? "missing"}. Expected HTML, plain text or PDF.");
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
@@ -156,12 +203,17 @@ public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
             int read;
             while ((read = await stream.ReadAsync(buffer, ct)) > 0)
             {
-                if (bytes.Length + read > 2_000_000)
+                if (bytes.Length + read > (pdf ? 10_000_000 : 2_000_000))
                 {
                     throw new InvalidDataException("Source exceeds download limit.");
                 }
 
                 await bytes.WriteAsync(buffer.AsMemory(0, read), ct);
+            }
+            if (pdf)
+            {
+                string text = ExtractPdfText(bytes.ToArray(), maxCharacters, ct);
+                return ($"<html><head><title>{WebUtility.HtmlEncode(Path.GetFileName(uri.AbsolutePath))}</title></head><body><article>{WebUtility.HtmlEncode(text)}</article></body></html>", uri.AbsoluteUri);
             }
             var encoding = Encoding.UTF8;
             try
@@ -177,6 +229,31 @@ public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
             return (encoding.GetString(bytes.ToArray()), uri.AbsoluteUri);
         }
         throw new InvalidDataException("Too many source redirects.");
+    }
+    public static string ExtractPdfText(byte[] bytes, int maxCharacters, CancellationToken ct)
+    {
+        if (bytes.Length > 10_000_000 || maxCharacters is < 1000 or > 50000)
+            throw new InvalidDataException("PDF source exceeds extraction limits.");
+        try
+        {
+            using var pdf = UglyToad.PdfPig.PdfDocument.Open(bytes);
+            var text = new StringBuilder();
+            foreach (var page in pdf.GetPages().Take(200))
+            {
+                ct.ThrowIfCancellationRequested();
+                text.Append(' ').Append(UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor.ContentOrderTextExtractor.GetText(page));
+                if (text.Length >= maxCharacters)
+                    break;
+            }
+            string normalized = Data.Normalize(text.ToString());
+            if (normalized.Length < 400)
+                throw new InvalidDataException("PDF has insufficient extractable text; scanned/image-only PDFs are not evidence substitutes.");
+            return normalized[..Math.Min(normalized.Length, maxCharacters)];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException and not InvalidDataException)
+        {
+            throw new InvalidDataException("PDF text extraction failed: " + ex.GetType().Name, ex);
+        }
     }
     private static bool IsPrivate(IPAddress address)
     {

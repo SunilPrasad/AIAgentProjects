@@ -119,7 +119,7 @@ public sealed class ModelGateway : IDisposable
         });
     }
 
-    public async Task<JsonElement> Search(string subject, Artifacts files, CancellationToken ct, string? researchPurpose = null)
+    public async Task<JsonElement> Search(string subject, Artifacts files, CancellationToken ct, string? researchPurpose = null, string cacheStage = "search")
     {
         var parameters = new Dictionary<string, object>
         {
@@ -151,7 +151,7 @@ public sealed class ModelGateway : IDisposable
             stream = false
         };
 
-        var text = await files.Cached("cache/search.json", Data.Write(body), async () =>
+        var text = await files.Cached($"cache/{cacheStage}.json", Data.Write(body), async () =>
         {
             for (int attempt = 1; ; attempt++)
             {
@@ -159,12 +159,12 @@ public sealed class ModelGateway : IDisposable
                     "[{Chapter}][ResearchAgent][SEARCH] START OpenRouter/{Model}",
                     subject, config.ResearchModel);
 
-                var requestStage = $"search-attempt-{attempt}-{Guid.NewGuid():N}";
+                var requestStage = $"{cacheStage}-attempt-{attempt}-{Guid.NewGuid():N}";
                 await files.Save($"provenance/{requestStage}-request.json", Data.Write(body));
 
                 var response = await Post(body, subject, "ResearchAgent", "SEARCH", ct);
                 await files.Save($"provenance/{requestStage}-response.json", response.GetRawText());
-                await files.Save("research/search-response.json", response.GetRawText());
+                await files.Save($"research/{cacheStage}-response.json", response.GetRawText());
                 LogUsage(response, subject, "ResearchAgent", config.ResearchModel);
 
                 try

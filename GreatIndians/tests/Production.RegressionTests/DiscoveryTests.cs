@@ -17,6 +17,7 @@ internal static class DiscoveryTests
 
     public static async Task RunAsync()
     {
+        await ResearchRecoveryTests.RunAsync();
         string root = Path.Combine(AppContext.BaseDirectory, "discovery-tests", Guid.NewGuid().ToString("N")[..12]);
         Directory.CreateDirectory(root);
         var settings = new DiscoverySettings { ChapterCount = 2 };
