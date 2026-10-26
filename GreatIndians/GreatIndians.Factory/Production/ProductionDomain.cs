@@ -2,8 +2,27 @@ using System.Text.Json.Serialization;
 
 namespace GreatIndians.Factory.Production;
 
+public sealed record ImageReviewSettings
+{
+    public string PhotographStyle { get; init; } = "documentary";
+    public string PhotographInstructions { get; init; } = "";
+    public string GeneratedArtworkInstructions { get; init; } = "";
+    public bool AllowBlackAndWhite { get; init; } = true;
+    public bool AllowArchivalWear { get; init; } = true;
+    public bool RequireOpeningPortrait { get; init; } = true;
+
+    public void Validate()
+    {
+        if (PhotographStyle is not ("documentary" or "archival" or "editorial")
+            || PhotographInstructions is null || PhotographInstructions.Length > 6000
+            || GeneratedArtworkInstructions is null || GeneratedArtworkInstructions.Length > 6000)
+            throw new InvalidDataException("imageReview requires photographStyle documentary, archival or editorial, and guidance strings of at most 6000 characters.");
+    }
+}
+
 public sealed record ProductionConfig
 {
+    public ImageReviewSettings ImageReview { get; init; } = new();
     public string BookId { get; init; } = "";
     public string Author { get; init; } = "";
     public string Profile { get; init; } = "biography";
@@ -55,6 +74,7 @@ public sealed record ProductionConfig
 
     public void Validate()
     {
+        (ImageReview ?? throw new InvalidDataException("imageReview cannot be null.")).Validate();
         if (!ContentProfiles.All.Contains(Profile) || !new[] { "generated", "preferWeb", "webOnly" }.Contains(ImageMode)
             || SubjectDefinitions is null || SubjectDefinitions.Length > 0 && (Subjects is null || SubjectDefinitions.Length != Subjects.Length
                 || SubjectDefinitions.Where((s, i) => s is null || s.Name != Subjects[i] || string.IsNullOrWhiteSpace(s.Id)

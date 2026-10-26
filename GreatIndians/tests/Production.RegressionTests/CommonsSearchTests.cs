@@ -42,6 +42,11 @@ internal static class CommonsSearchTests
         var equipment = portrait with { Title = "File:Microwave apparatus.jpg", Description = "Original microwave apparatus and radio wave detector in a museum", DownloadUrl = "https://upload.wikimedia.org/apparatus.jpg" };
         Check(CommonsImageSource.RankForPassage([portrait, equipment], "His microwave apparatus detected radio waves", "Research equipment").First() == equipment,
             "Relevant equipment photo did not outrank generic portrait for research passage.");
+        var archivalPortrait = portrait with { Title = "File:1920 Jagadish Chandra Bose.jpg", Description = "Jagadish Chandra Bose, 1920" };
+        var croppedEquipment = equipment with { Title = "File:Crescograph - Jagadish Chandra Bose Museum cropped.jpg" };
+        Check(CommonsImageSource.RankForPassage([equipment, croppedEquipment, archivalPortrait],
+            "Jagadish Chandra Bose was born and attended school", "Bose standing with microwave apparatus and crescograph", preferPortrait: true).First() == archivalPortrait,
+            "Opening portrait was outranked by apparatus or cropped duplicate variants.");
         Check(!CommonsImageSource.AllowedUri("https://en.wikipedia.org/w/api.php"), "Wikipedia metadata host was allowed as an image download source.");
 
         var unavailable = new Handler { WikipediaUnavailable = true };

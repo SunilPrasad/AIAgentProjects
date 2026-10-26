@@ -101,6 +101,29 @@ Automated web sourcing is deliberately limited to Wikimedia Commons PNG/JPEG ori
 
 The Indian Science collection uses `production.imageMode: "webOnly"` for every chapter. New scientific-biography collections created by discovery also default to this mode; existing definitions keep their explicitly configured policy. In `webOnly`, both image-generation requests and reuse of generated-image caches are blocked at the API layer. Missing or rejected photographs stop the chapter with a report instead of purchasing generated art. This is configurable per book; `preferWeb` deliberately permits generated fallback, while `generated` deliberately requests AI artwork. Planning and vision review still use paid models even when image generation is disabled.
 
+### Configure how images are reviewed
+
+Set `production.imageReview` in the book JSON. Photographs now have a standalone review prompt and never inherit the painted-art review instructions or speculative generated character/scene brief.
+
+```json
+"production": {
+  "imageMode": "webOnly",
+  "minimumImageScore": 70,
+  "imageReview": {
+    "photographStyle": "documentary",
+    "photographInstructions": "Prefer authentic photographs of the scientist, their apparatus and relevant institutions. Assess documentary value and clarity, not painted storybook aesthetics.",
+    "generatedArtworkInstructions": "",
+    "allowBlackAndWhite": true,
+    "allowArchivalWear": true,
+    "requireOpeningPortrait": true
+  }
+}
+```
+
+`photographStyle` supports `documentary` (authenticity, relevance and clarity), `archival` (historical photographic documentation), and `editorial` (clear nonfiction visual communication). `allowBlackAndWhite` accepts monochrome/sepia photographs; `allowArchivalWear` accepts minor grain/fading when still recognisable. Disabling either imposes that stricter presentation requirement. `photographInstructions` supplies additional guidance only to the photo reviewer; `generatedArtworkInstructions` goes only to generated-art review. Generated appearance remains controlled by the separate `illustrationStyle` file. Guidance strings are limited to 6000 characters; they cannot waive mandatory checks. The existing minimum score setting remains 70–95, with every score category at least 50 and hard failures always blocking acceptance.
+
+For biography profiles, `requireOpeningPortrait: true` prioritises actual named photographs/portraits before apparatus, busts, statues and buildings for I01. An adult archival portrait can introduce a chapter whose opening paragraph mentions childhood. Apparatus photographs remain eligible for the relevant research passages. Set this switch false only when an introductory object/site photograph is acceptable. The metadata ranking prioritises candidates; vision review still verifies what is actually in the photograph. The selected candidate order is saved in `reviews/I01-web-candidate-order.json`, and effective settings in `review-policy.json` and QA. Changing review settings changes review inputs; old decisions are not silently carried forward to a different policy. Source Markdown is unchanged.
+
 Before scene planning, production now tries a plain name without honorifics, the configured subject name, aliases and the optional image query (at most six distinct queries). It also resolves images embedded in likely English Wikipedia articles to their original Commons file metadata. No extra `scientist portrait` terms or forced `filetype:bitmap` suffix are added to plain-name searches. Curated `commonsFiles` are checked first and combined with discovered candidates. Candidates are deduplicated by original URL; metadata searches refresh daily, including empty results, and old narrow-query empty caches cannot block alternatives. Each query/failure and the resulting candidate list are recorded in `provenance/commons-candidates.json`.
 
 The planner receives a bounded inventory of available photos before describing scenes. It should use portraits for introductions, real apparatus for corresponding research, and appropriate site/institute photographs for related passages. Photo reviewers assess the actual manuscript passage rather than requiring the exact composition of an imagined generated scene. Candidates are ranked for passage relevance before applying `maxWebCandidates`, which still bounds paid image reviews per scene. Documentary identity, authenticity, source/license metadata, resolution and PDF checks remain mandatory. `preferWeb` generates only if no reviewed candidate passes; `webOnly` never purchases generated images and stops before planning if discovery finds no candidates.

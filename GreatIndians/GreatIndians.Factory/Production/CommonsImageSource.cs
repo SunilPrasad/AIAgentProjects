@@ -115,11 +115,20 @@ public sealed class CommonsImageSource : IDisposable
             .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).Take(6).ToArray();
     }
 
-    public static IEnumerable<CommonsCandidate> RankForPassage(IEnumerable<CommonsCandidate> candidates, string passage, string scene)
+    public static IEnumerable<CommonsCandidate> RankForPassage(IEnumerable<CommonsCandidate> candidates, string passage, string scene, bool preferPortrait = false)
     {
         var words = Regex.Matches((passage + " " + scene).ToLowerInvariant(), @"[\p{L}\p{N}]{4,}")
             .Select(m => m.Value).Distinct().ToArray();
-        return candidates.OrderByDescending(c => words.Count(word => (c.Title + " " + c.Description).Contains(word, StringComparison.OrdinalIgnoreCase)));
+        return candidates.OrderByDescending(c => preferPortrait ? PortraitPriority(c) : 0)
+            .ThenByDescending(c => words.Count(word => (c.Title + " " + c.Description).Contains(word, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static int PortraitPriority(CommonsCandidate candidate)
+    {
+        string title = candidate.Title.Replace('_', ' ');
+        if (Regex.IsMatch(title, @"\b(apparatus|crescograph|equipment|projector|museum|institute|institution|college|building|bust|statue|sculpture|memorial|stamp|signature|painting|drawing|bedroom)\b", RegexOptions.IgnoreCase)) return -1;
+        if (Regex.IsMatch(title + " " + candidate.Description, @"\b(portrait|head[- ]and[- ]shoulders)\b", RegexOptions.IgnoreCase)) return 2;
+        return 1; // Plain named archival photographs outrank apparatus even when their captions are shorter.
     }
 
     public static List<CommonsCandidate> Parse(JsonElement root)

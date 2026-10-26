@@ -103,6 +103,7 @@ internal static class GenericBookTests
         var final = await pipeline.RunAsync(manuscript, Path.Combine(root, "web-success"), CancellationToken.None);
         Check(File.Exists(final) && modelHandler.ImageCalls == 0, "webOnly bought generated art or failed to deliver.");
         Check(modelHandler.SawPhotoInventory, "Planner did not receive available photographs before describing scenes.");
+        Check(modelHandler.PhotoReviewHadNoArtBrief, "Photograph review received speculative generated character/scene instructions.");
         var run = Path.GetDirectoryName(final)!;
         var layout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(run, "layout-1.json")));
         Check(layout.Text.Any(t => t.Kind == "image-credit" && t.Text.Contains("Fixture photographer")), "Photographer credit missing from PDF.");
@@ -210,6 +211,7 @@ internal static class GenericBookTests
         public int Calls, ImageCalls;
         public bool RejectWebPhoto;
         public bool SawPhotoInventory;
+        public bool PhotoReviewHadNoArtBrief;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
@@ -226,6 +228,12 @@ internal static class GenericBookTests
                 if (name == "IllustrationPlan")
                     SawPhotoInventory = json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text")
                         .GetString()!.Contains("availableWebImages", StringComparison.Ordinal);
+                if (name == "WebImageReview")
+                {
+                    using var photoInput = JsonDocument.Parse(json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text").GetString()!);
+                    PhotoReviewHadNoArtBrief = !photoInput.RootElement.TryGetProperty("character", out _)
+                        && !photoInput.RootElement.TryGetProperty("scene", out _);
+                }
                 object answer = name switch
                 {
                     "IllustrationPlan" => Plan(manuscript),

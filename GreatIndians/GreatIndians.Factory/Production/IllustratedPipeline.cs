@@ -34,6 +34,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         await files.Save("status.json", Data.Write(new { status = "IN_PROGRESS", manuscript.SourceSha256 }));
         await files.Save("manuscript.json", Data.Write(manuscript));
         await files.Save("design.json", Data.Write(new { version = ProductionDesign.Version, specification = ProductionDesign.Description(config) }));
+        await files.Save("review-policy.json", Data.Write(new { config.ImageReview, config.MinimumImageScore }));
         File.Copy(manuscript.SourcePath, Path.Combine(root, "source.md"), true);
         var notes = new List<string>();
         log.LogInformation("[PDF][REVIEW POLICY] {Policy}; accept at {Score}/100 with no hard defects; stop at first acceptable image",
@@ -315,7 +316,11 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             var subject = config.SubjectDefinitions.FirstOrDefault(s => s.Name == manuscript.Subject);
             var candidates = await source.FindAsync(manuscript, subject, files, ct);
             string passage = string.Join(" ", manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)).Select(p => p.Text));
-            foreach (var candidate in CommonsImageSource.RankForPassage(candidates.Where(c => !used.Contains(c.DownloadUrl)), passage, scene.Description).Take(config.MaxWebCandidates))
+            bool requirePortrait = scene.Id == "I01" && ContentProfiles.IsPerson(config.Profile) && config.ImageReview.RequireOpeningPortrait;
+            var ranked = CommonsImageSource.RankForPassage(candidates.Where(c => !used.Contains(c.DownloadUrl)), passage, scene.Description, requirePortrait)
+                .Take(config.MaxWebCandidates).ToList();
+            await files.Save($"reviews/{scene.Id}-web-candidate-order.json", Data.Write(new { requirePortrait, config.ImageReview, candidates = ranked.Select(c => new { c.Title, c.SourceUrl }) }));
+            foreach (var candidate in ranked)
             {
                 var stage = scene.Id + "-web-" + Data.Hash(candidate.DownloadUrl)[..12];
                 try
@@ -324,7 +329,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     var hash = ManuscriptReader.HashFile(image.Path);
                     if (used.Contains(hash) || used.Contains(image.Credit.OriginalSha256)) continue;
                     var assessment = await api.JsonAsync<WebImageReview>(stage + "-review", config.VisionModel, ProfilePrompts.Review(config, true),
-                        Data.Write(new { manuscript.Subject, character, scene, config.MinimumImageScore,
+                        Data.Write(new { manuscript.Subject, config.ImageReview, sceneId = scene.Id, requireOpeningPortrait = requirePortrait,
+                            placement = scene.InsertBeforeParagraphId, config.MinimumImageScore,
                             sourceMetadata = image.Credit, sourceDescription = candidate.Description,
                             passages = manuscript.Paragraphs.Where(p => scene.ParagraphIds.Contains(p.Id)),
                             referenceRoles = new[] { "candidate real web photograph" }.Concat(references.Select(_ => "accepted visual subject reference")),
@@ -415,6 +421,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         => files.Save("QA.md", $"# Production QA — {manuscript.Subject}\n\nStatus: {status}\n\n" +
             $"Design: {ProductionDesign.Version}\n\n{ProductionDesign.Description(config)}\n\n" +
             $"Image review: {ProductionPrompts.Version}; minimum {config.MinimumImageScore}/100 (40% style, 30% character, 30% quality); every category at least 50; hard defects cannot be averaged away.\n\n" +
+            $"Photograph review style: {config.ImageReview.PhotographStyle}; monochrome allowed: {config.ImageReview.AllowBlackAndWhite}; archival wear allowed: {config.ImageReview.AllowArchivalWear}; opening portrait required for people: {config.ImageReview.RequireOpeningPortrait}. Full settings are in review-policy.json.\n\n" +
             $"Source: {manuscript.SourcePath}\n\nSource SHA-256: {manuscript.SourceSha256}\n\nPDF: {final ?? "No final PDF promoted; inspect retained previews and review JSON."}\n\n" +
             (layout is null ? "" : $"PDF pages: {layout.PageCount}. Minimum effective artwork resolution: {layout.Images.Min(i => i.EffectiveDpi):F1} PPI. " +
                 $"Exact selectable text/paragraph comparison: {(checks?.Passed == true ? "PASS" : "FAIL")}. " +
