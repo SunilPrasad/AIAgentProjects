@@ -11,6 +11,11 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 try
 {
+    if (args.FirstOrDefault() == "discover")
+    {
+        Environment.ExitCode = await GreatIndians.Factory.Discovery.DiscoveryCommand.RunAsync(args.Skip(1).ToArray(), cancellation.Token);
+        return;
+    }
     if (args.FirstOrDefault() == "pdf")
     {
         Environment.ExitCode = await GreatIndians.Factory.Production.IllustratedCommand.RunAsync(args.Skip(1).ToArray(), cancellation.Token);

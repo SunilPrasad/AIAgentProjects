@@ -119,7 +119,7 @@ public sealed class ModelGateway : IDisposable
         });
     }
 
-    public async Task<JsonElement> Search(string subject, Artifacts files, CancellationToken ct)
+    public async Task<JsonElement> Search(string subject, Artifacts files, CancellationToken ct, string? researchPurpose = null)
     {
         var parameters = new Dictionary<string, object>
         {
@@ -134,7 +134,7 @@ public sealed class ModelGateway : IDisposable
             parameters["allowed_domains"] = config.AllowedSourceDomains;
         }
 
-        var prompt = $"Research {subject} for a responsible children's {config.Profile} chapter. " + ContentProfiles.Guidance(config.Profile) + " " +
+        var prompt = (researchPurpose ?? $"Research {subject} for a responsible children's {config.Profile} chapter. " + ContentProfiles.Guidance(config.Profile)) + " " +
             $"Search the web now and cite at least {config.MaxSources} genuine accessible sources. " +
             "Prefer universities, museums, archives, scholarly biographies and government institutions. " +
             "Cover documented context, important developments, distinctive features, significance and contested claims. " +

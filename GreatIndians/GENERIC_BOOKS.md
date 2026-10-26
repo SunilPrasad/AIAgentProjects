@@ -46,7 +46,7 @@ This override permits a proof, not editorial approval. Image, source-integrity, 
 
 ## Define another topic
 
-Supported profiles: `biography`, `scientific-biography`, `temple`, `place`, `event`, `nonfiction`. A book may have any positive number of subjects; there is no ten-subject requirement. A generic topic can be one subject/chapter, or several explicitly configured subjects/chapters. The application does not automatically invent a whole book's chapter list from its title.
+Supported profiles: `biography`, `scientific-biography`, `temple`, `place`, `event`, `nonfiction`. A book may have any positive number of subjects; there is no ten-subject requirement. A generic topic can be one subject/chapter, or several explicitly configured subjects/chapters. To research and select a chapter list from a title, run the separate [three-juror discovery command](TOPIC_DISCOVERY.md) first. Each selected topic requires two of three votes; successful discovery updates the shared JSON automatically and preserves the downstream review requirements.
 
 ```json
 {

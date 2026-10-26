@@ -2,6 +2,8 @@
 
 The diagrams below document the original single-book workflow. Shared book definitions, topic profiles, real web photographs and configuration-driven assembly are now available; see [GENERIC_BOOKS.md](GENERIC_BOOKS.md) for the extended commands and policies. Legacy commands remain supported.
 
+An optional preceding phase, [topic discovery](TOPIC_DISCOVERY.md), now researches a book title, gathers proposals from three distinct AI models, merges the candidate pool and collects three independent ballots. Only candidates with at least two approvals can enter the shared book JSON. It runs via `discover`, separately from writing and illustration, and does not replace their editorial or visual checks.
+
 Reviewed 26 October 2026 against Git revision `73b74f0`, including the current local configuration and the publishing workspace scripts. This describes the running implementation, rather than the older requirements documents. No paid model requests or book generation were run for this review.
 
 ## 1. Full journey

@@ -27,6 +27,9 @@ SUBJECTS = BOOK['subjects']
 assert SUBJECTS and len({s['id'] for s in SUBJECTS}) == len(SUBJECTS)
 assert all(re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*',s['id']) for s in SUBJECTS)
 ROOT = (DEFINITION.parent / BOOK.get('outputRoot','../output/books')).resolve() / BOOK_ID
+if BOOK.get('selectionId'):
+    assert re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', BOOK['selectionId']), 'Unsafe selection ID'
+    ROOT = ROOT / 'selections' / BOOK['selectionId']
 OUT = ROOT / 'assembled'
 TMP = OUT / 'previews'
 COVER = Path(args.cover).resolve() if args.cover else None

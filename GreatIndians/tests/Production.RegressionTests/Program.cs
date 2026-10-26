@@ -5,6 +5,8 @@ using GreatIndians.Factory.Production;
 using SkiaSharp;
 
 // Native layout and acceptance-gate regression tests. No API client or network calls.
+await DiscoveryTests.RunAsync();
+if (args.Contains("--discovery-only")) return;
 var root = Path.Combine(AppContext.BaseDirectory, "proofs", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 await GenericBookTests.RunAsync(root);

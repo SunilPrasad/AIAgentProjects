@@ -26,6 +26,10 @@ public sealed record BookDefinition
     public string Language { get; init; } = "British English";
     public bool RequireEditorialApproval { get; init; } = true;
     public string OutputRoot { get; init; } = "../output/books";
+    public string SelectionId { get; init; } = "";
+    public Discovery.DiscoverySettings Discovery { get; init; } = new();
+    public bool RequireDiscoveryApproval { get; init; }
+    public Discovery.DiscoveryApproval? DiscoveryApproval { get; init; }
     public SubjectDefinition[] Subjects { get; init; } = [];
     public BookConfig Writing { get; init; } = new();
     public ProductionConfig Production { get; init; } = new();
@@ -52,11 +56,18 @@ public sealed record BookDefinition
         var identifiers = Subjects.SelectMany(s => new[] { s.Name }.Concat(s.Aliases)).ToArray();
         if (identifiers.Distinct(StringComparer.OrdinalIgnoreCase).Count() != identifiers.Length)
             throw new InvalidDataException("Subject names and aliases must identify one subject unambiguously.");
+        if (SelectionId is null || SelectionId.Length > 0 && !ValidId(SelectionId))
+            throw new InvalidDataException("Invalid selection output ID.");
+        if (RequireDiscoveryApproval)
+            (DiscoveryApproval ?? throw new InvalidDataException("Missing topic discovery approval. Run discover first.")).Validate(this);
     }
 
     private static bool ValidId(string id) => Regex.IsMatch(id ?? "", "^[a-z0-9]+(?:-[a-z0-9]+)*$");
-    private string Root(string definitionPath) => Path.Combine(
-        Path.GetFullPath(OutputRoot, Path.GetDirectoryName(Path.GetFullPath(definitionPath))!), Id);
+    private string Root(string definitionPath)
+    {
+        var root = Path.Combine(Path.GetFullPath(OutputRoot, Path.GetDirectoryName(Path.GetFullPath(definitionPath))!), Id);
+        return SelectionId.Length == 0 ? root : Path.Combine(root, "selections", SelectionId);
+    }
 
     private static string Asset(string path, string candidate, string defaultName, string bundled)
     {

@@ -14,6 +14,9 @@ definition=Path(args.book).resolve()
 book=json.loads(definition.read_text(encoding='utf-8-sig'))
 assert re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*',book['id'])
 base=(definition.parent/book.get('outputRoot','../output/books')).resolve()/book['id']
+if book.get('selectionId'):
+    assert re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*',book['selectionId']), 'Unsafe selection ID'
+    base=base/'selections'/book['selectionId']
 out=base/'sales/etsy'
 out.mkdir(parents=True,exist_ok=True)
 report=json.loads((base/'assembled/assembly-report.json').read_text())

@@ -9,9 +9,9 @@ namespace GreatIndians.Factory;
 
 public sealed class Researcher(BookConfig config, ModelGateway api, ILogger log)
 {
-    public async Task<List<Source>> Gather(string subject, Artifacts files, CancellationToken ct)
+    public async Task<List<Source>> Gather(string subject, Artifacts files, CancellationToken ct, string? researchPurpose = null)
     {
-        var search = await api.Search(subject, files, ct);
+        var search = await api.Search(subject, files, ct, researchPurpose);
         var urls = new List<string>();
         CollectUrls(search, urls);
         var result = new List<Source>();

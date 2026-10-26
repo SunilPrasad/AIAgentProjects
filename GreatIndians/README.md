@@ -14,6 +14,8 @@ approved chapter. [Editorial/source notes](examples/aryabhata.chapter-notes.md) 
 
 ## Run
 
+To discover a top-ten chapter shortlist from a title using three independent AI jurors and a two-of-three majority, see [Topic discovery](TOPIC_DISCOVERY.md). The separate `discover` command updates a shared book JSON; writing and illustration run afterwards.
+
 To illustrate an **existing researched chapter** and create its reviewed PDF, see
 [Illustrated chapter production](ILLUSTRATED_PRODUCTION.md):
 
