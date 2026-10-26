@@ -14,7 +14,12 @@ public static class ProfilePrompts
         "For generated-illustration, the supplied scene remains applicable. Still reject actual wrong identities, unrelated images, " +
         "destructive cropping, clipped/unreadable text or image/text overlap. Previous image approval does not excuse new layout defects. " +
         $"Configured photograph review style: {config.ImageReview.PhotographStyle}; " +
-        $"monochrome allowed: {config.ImageReview.AllowBlackAndWhite}; archival wear allowed: {config.ImageReview.AllowArchivalWear}.";
+        $"monochrome allowed: {config.ImageReview.AllowBlackAndWhite}; archival wear allowed: {config.ImageReview.AllowArchivalWear}." +
+        (config.MissingWebImagePolicy == "skip"
+            ? " MISSING-PHOTO POLICY: omittedImages records intentionally skipped image slots. They are not required illustrations. " +
+                "A chapter can contain fewer photographs than the scene plan, or none. Do not reject a page because an omitted image or opening portrait is absent. " +
+                "No blank image frames, placeholders or missing-image notices should be inserted into the story. Still review every retained photograph and all text/layout checks."
+            : "");
 
     public static string Plan(ProductionConfig config, string style)
     {

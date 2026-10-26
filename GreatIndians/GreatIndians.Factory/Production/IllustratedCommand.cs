@@ -58,6 +58,7 @@ public static class IllustratedCommand
         if (inspect)
         {
             Console.WriteLine($"Image policy: {config.ImageMode}; AI image generation {(config.ImageMode == "webOnly" ? "DISABLED; reviewed Wikimedia photographs only" : "permitted by configuration")}");
+            Console.WriteLine($"Missing photograph policy: {config.MissingWebImagePolicy}; {(config.MissingWebImagePolicy == "skip" ? "omit unavailable images and continue, including text-only if necessary" : "stop if a planned image is unavailable")}");
             Console.WriteLine($"Photo review: {config.ImageReview.PhotographStyle}; black-and-white={config.ImageReview.AllowBlackAndWhite}; archival wear={config.ImageReview.AllowArchivalWear}; opening portrait={config.ImageReview.RequireOpeningPortrait}; minimum score={config.MinimumImageScore}/100");
             Console.WriteLine($"Design {ProductionDesign.Version}: {ProductionDesign.Description(config)}");
             foreach (var m in manuscripts) Console.WriteLine($"{m.Subject}: {m.Paragraphs.Count} paragraphs; {m.Headings.Count} section headings retained at {ProductionDesign.HeadingSize}pt; SHA-256={m.SourceSha256}; source={m.SourcePath}");

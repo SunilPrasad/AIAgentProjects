@@ -170,6 +170,35 @@ internal static class GenericBookTests
         catch (ProductionReviewException) { nonPhotoRejected = true; }
         Check(nonPhotoRejected && modelHandler.ImageCalls == 1, "A high-scoring non-photograph bypassed the real-photo gate.");
         Console.WriteLine("PASS missing sources: webOnly stops; preferWeb uses bounded generated fallback. No real network/model calls.");
+
+        var optional = config with { MissingWebImagePolicy = "skip" };
+        using var optionalApi = new ProductionApi(optional, "OFFLINE", NullLogger.Instance, modelHttp);
+        int generatedBeforeSkip = modelHandler.ImageCalls;
+        string noSources = await new IllustratedPipeline(optional, "OFFLINE FIXTURE", optionalApi, NullLogger.Instance, noWeb)
+            .RunAsync(manuscript, Path.Combine(root, "optional-no-sources"), default);
+        var noSourcesLayout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(Path.GetDirectoryName(noSources)!, "layout-1.json")));
+        Check(noSourcesLayout.Images.Count == 0 && ChapterPdfLayout.Verify(noSources, manuscript, noSourcesLayout, optional).Passed,
+            "No-photo chapter failed or changed source text.");
+        string allRejected = await new IllustratedPipeline(optional, "OFFLINE FIXTURE", optionalApi, NullLogger.Instance, web)
+            .RunAsync(manuscript, Path.Combine(root, "optional-rejected"), default);
+        var rejectedLayout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(Path.GetDirectoryName(allRejected)!, "layout-1.json")));
+        Check(rejectedLayout.Images.Count == 0 && File.ReadAllText(Path.Combine(Path.GetDirectoryName(allRejected)!, "image-omissions.json")).Contains("I01"),
+            "Rejected opening image was included or its omission was not recorded.");
+        modelHandler.RejectWebPhoto = false;
+        modelHandler.PlannedSceneCount = 3;
+        modelHandler.RejectPhotoSceneId = "I02";
+        var partialConfig = optional with { IllustrationCount = 3 };
+        using var partialApi = new ProductionApi(partialConfig, "OFFLINE FIXTURE", NullLogger.Instance, modelHttp);
+        using var multipleHttp = new HttpClient(new WebHandler { Multiple = true });
+        using var multiple = new CommonsImageSource(multipleHttp);
+        string partial = await new IllustratedPipeline(partialConfig, "OFFLINE FIXTURE", partialApi, NullLogger.Instance, multiple)
+            .RunAsync(manuscript, Path.Combine(root, "optional-partial"), default);
+        var partialLayout = Data.Read<LayoutManifest>(File.ReadAllText(Path.Combine(Path.GetDirectoryName(partial)!, "layout-1.json")));
+        Check(partialLayout.Images.Select(i => i.SceneId).SequenceEqual(["I01", "I03"])
+            && ChapterPdfLayout.Verify(partial, manuscript, partialLayout, partialConfig).Passed,
+            "Valid photos were lost, a rejected photo was included, or source text changed after an omission.");
+        Check(modelHandler.ImageCalls == generatedBeforeSkip, "Skipping unavailable photographs purchased generated images.");
+        Console.WriteLine("PASS optional photographs: partial omissions, missing/rejected opening, text-only PDF/EPUB, exact text and no generated-image purchases");
     }
 
     private static IllustrationPlan Plan(Manuscript manuscript) => new(
@@ -195,11 +224,11 @@ internal static class GenericBookTests
             } }
         } } } });
 
-    private static byte[] ImageBytes()
+    private static byte[] ImageBytes(int variant = 0)
     {
         using var bitmap = new SKBitmap(1800, 1200);
         using var canvas = new SKCanvas(bitmap);
-        canvas.Clear(new SKColor(40, 185, 194));
+        canvas.Clear(new SKColor((byte)(40 + variant * 30), 185, 194));
         using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();
     }
@@ -208,16 +237,33 @@ internal static class GenericBookTests
     {
         public int Calls;
         public bool Empty;
+        public bool Multiple;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
             HttpContent body = request.RequestUri!.Host == "en.wikipedia.org"
                 ? new StringContent("{}", Encoding.UTF8, "application/json")
                 : request.RequestUri.Host == "commons.wikimedia.org"
-                ? new StringContent(Empty ? "{}" : Metadata(), Encoding.UTF8, "application/json")
-                : new ByteArrayContent(ImageBytes());
+                ? new StringContent(Empty ? "{}" : Multiple ? MultipleMetadata() : Metadata(), Encoding.UTF8, "application/json")
+                : new ByteArrayContent(ImageBytes(Multiple && request.RequestUri.AbsolutePath.Contains("2") ? 2 : Multiple && request.RequestUri.AbsolutePath.Contains("3") ? 3 : 0));
             if (body is ByteArrayContent) body.Headers.ContentType = new("image/png");
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = body });
+        }
+        private static string MultipleMetadata()
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(Metadata())!;
+            var pages = node["query"]!["pages"]!.AsArray();
+            var template = pages[0]!.DeepClone();
+            pages.Clear();
+            for (int number = 1; number <= 3; number++)
+            {
+                var page = template.DeepClone();
+                page["pageid"] = number;
+                page["title"] = $"File:Temple Alpha {number}.jpg";
+                page["imageinfo"]![0]!["url"] = $"https://upload.wikimedia.org/fixture-{number}.jpg";
+                pages.Add(page);
+            }
+            return node.ToJsonString();
         }
     }
 
@@ -229,6 +275,8 @@ internal static class GenericBookTests
         public bool PhotoReviewHadNoArtBrief;
         public bool PhotoPagesHadNoArtBrief = true, RejectPageSemantics;
         public int PhotoPageContexts, PageReviewCalls;
+        public int PlannedSceneCount = 1;
+        public string RejectPhotoSceneId = "";
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
@@ -242,6 +290,7 @@ internal static class GenericBookTests
             else
             {
                 string? name = json.RootElement.GetProperty("response_format").GetProperty("json_schema").GetProperty("name").GetString();
+                bool rejectScene = false;
                 if (name == "IllustrationPlan")
                     SawPhotoInventory = json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text")
                         .GetString()!.Contains("availableWebImages", StringComparison.Ordinal);
@@ -250,6 +299,7 @@ internal static class GenericBookTests
                     using var photoInput = JsonDocument.Parse(json.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text").GetString()!);
                     PhotoReviewHadNoArtBrief = !photoInput.RootElement.TryGetProperty("character", out _)
                         && !photoInput.RootElement.TryGetProperty("scene", out _);
+                    rejectScene = photoInput.RootElement.GetProperty("sceneId").GetString() == RejectPhotoSceneId;
                 }
                 if (name == "PageReview")
                 {
@@ -261,9 +311,12 @@ internal static class GenericBookTests
                 }
                 object answer = name switch
                 {
-                    "IllustrationPlan" => Plan(manuscript),
+                    "IllustrationPlan" => Plan(manuscript) with { Scenes = Enumerable.Range(0, PlannedSceneCount).Select(i =>
+                        new IllustrationScene($"I{i + 1:D2}", manuscript.Subject, [manuscript.Paragraphs[i].Id], manuscript.Paragraphs[i].Id,
+                            "Establishing view", "3:2", "Match exact site", ["watermarks"], "Offline photograph fixture")).ToList() },
                     "ImageReview" => Review(),
-                    "WebImageReview" => new WebImageReview(!RejectWebPhoto, !RejectWebPhoto, Review()),
+                    "WebImageReview" => new WebImageReview(!RejectWebPhoto, !RejectWebPhoto,
+                        rejectScene ? Review() with { MatchesPassage = false, Issues = ["Offline wrong passage"] } : Review()),
                     "PageReview" => RejectPageSemantics
                         ? new PageReview(false, true, true, true, true, true, true, false, true, ["Offline semantic rejection"], [])
                         : new PageReview(true, true, true, true, true, true, true, true, true, [], []),

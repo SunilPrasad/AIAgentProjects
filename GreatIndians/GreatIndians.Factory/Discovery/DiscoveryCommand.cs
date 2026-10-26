@@ -54,7 +54,7 @@ public static class DiscoveryConfigStore
         {
             Profile = result.Profile, Subjects = subjects, Discovery = settings,
             Production = original is null && result.Profile == "scientific-biography"
-                ? book.Production with { ImageMode = "webOnly" } : book.Production,
+                ? book.Production with { ImageMode = "webOnly", MissingWebImagePolicy = "skip" } : book.Production,
             SelectionId = sameList ? book.SelectionId : "jury-" + hash[..12],
             RequireDiscoveryApproval = true, DiscoveryApproval = approval
         };

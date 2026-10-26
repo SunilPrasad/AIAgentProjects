@@ -30,6 +30,7 @@ public sealed record ProductionConfig
     public int AudienceMaxAge { get; init; } = 12;
     public SubjectDefinition[] SubjectDefinitions { get; init; } = [];
     public string ImageMode { get; init; } = "generated";
+    public string MissingWebImagePolicy { get; init; } = "stop";
     public int MaxWebCandidates { get; init; } = 3;
     public bool RequireEditorialApproval { get; init; }
     public string BookTitle { get; init; } = "Legends of Ancient India";
@@ -75,6 +76,8 @@ public sealed record ProductionConfig
     public void Validate()
     {
         (ImageReview ?? throw new InvalidDataException("imageReview cannot be null.")).Validate();
+        if (MissingWebImagePolicy is not ("stop" or "skip") || MissingWebImagePolicy == "skip" && ImageMode != "webOnly")
+            throw new InvalidDataException("missingWebImagePolicy must be stop or skip; skip requires imageMode=webOnly.");
         if (!ContentProfiles.All.Contains(Profile) || !new[] { "generated", "preferWeb", "webOnly" }.Contains(ImageMode)
             || SubjectDefinitions is null || SubjectDefinitions.Length > 0 && (Subjects is null || SubjectDefinitions.Length != Subjects.Length
                 || SubjectDefinitions.Where((s, i) => s is null || s.Name != Subjects[i] || string.IsNullOrWhiteSpace(s.Id)

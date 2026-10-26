@@ -16,8 +16,16 @@ internal static class SavedLayoutSmokeTest
         if (manuscript.SourceSha256 != saved.SourceSha256) throw new Exception("Saved manuscript changed; select a matching run for layout reproduction.");
         var plan = Data.Read<IllustrationPlan>(File.ReadAllText(Path.Combine(runRoot, "illustration-plan.json")));
         var artwork = new List<AcceptedArtwork>();
+        var omitted = new HashSet<string>();
+        string omissionsPath = Path.Combine(runRoot, "image-omissions.json");
+        if (File.Exists(omissionsPath))
+        {
+            using var omissions = System.Text.Json.JsonDocument.Parse(File.ReadAllText(omissionsPath));
+            foreach (var entry in omissions.RootElement.EnumerateArray()) omitted.Add(entry.GetProperty("SceneId").GetString()!);
+        }
         foreach (var scene in plan.Scenes)
         {
+            if (omitted.Contains(scene.Id)) continue;
             foreach (var reviewFile in Directory.GetFiles(Path.Combine(runRoot, "reviews"), scene.Id + "-web-*.json")
                 .Where(p => !p.EndsWith("-candidate-order.json", StringComparison.Ordinal)))
             {

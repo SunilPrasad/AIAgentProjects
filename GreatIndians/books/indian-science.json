@@ -98,6 +98,7 @@
     "illustrationStyle": "../GreatIndians.Factory/profiles/storybook-art.md",
     "styleReferenceImage": "../GreatIndians.Factory/assets/reference/art-style-reference.png",
     "imageMode": "webOnly",
+    "missingWebImagePolicy": "skip",
     "imageReview": {
       "photographStyle": "documentary",
       "photographInstructions": "Prefer authentic photographs of the scientist, their apparatus and relevant institutions. Assess documentary value and clarity, not painted storybook aesthetics.",

@@ -6,12 +6,14 @@ namespace GreatIndians.Factory.Production;
 public sealed class IllustratedPipeline(ProductionConfig config, string style, ProductionApi api, ILogger log, CommonsImageSource? imageSource = null)
 {
     private sealed record LayoutReceipt(string InputHash, LayoutManifest Manifest);
+    private sealed record SkippedImage(string SceneId, string? BeforeParagraphId, string Reason);
 
     private string? StyleReferencePath => string.IsNullOrWhiteSpace(config.StyleReferenceImage)
         ? null : Path.GetFullPath(config.StyleReferenceImage, AppContext.BaseDirectory);
 
     public async Task<string> RunAsync(Manuscript manuscript, string outputRoot, CancellationToken ct)
     {
+        config.Validate();
         ManuscriptReader.VerifyEditorialApproval(manuscript, config);
         var costMark = CostMeter.Mark();
         var slug = string.IsNullOrWhiteSpace(manuscript.SubjectId)
@@ -34,7 +36,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         await files.Save("status.json", Data.Write(new { status = "IN_PROGRESS", manuscript.SourceSha256 }));
         await files.Save("manuscript.json", Data.Write(manuscript));
         await files.Save("design.json", Data.Write(new { version = ProductionDesign.Version, specification = ProductionDesign.Description(config) }));
-        await files.Save("review-policy.json", Data.Write(new { config.ImageReview, config.MinimumImageScore }));
+        await files.Save("review-policy.json", Data.Write(new { config.ImageReview, config.MinimumImageScore, config.MissingWebImagePolicy }));
         File.Copy(manuscript.SourcePath, Path.Combine(root, "source.md"), true);
         var notes = new List<string>();
         log.LogInformation("[PDF][REVIEW POLICY] {Policy}; accept at {Score}/100 with no hard defects; stop at first acceptable image",
@@ -46,7 +48,9 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 : await webImages.FindAsync(manuscript, config.SubjectDefinitions.FirstOrDefault(s => s.Name == manuscript.Subject), files, ct);
             if (config.ImageMode != "generated")
                 log.LogInformation("[PDF][WEB SEARCH] {Count} reusable image candidates found before scene planning; review limit {Limit} per scene", availablePhotos.Count, config.MaxWebCandidates);
-            if (config.ImageMode == "webOnly" && availablePhotos.Count == 0)
+            bool skipMissing = config.ImageMode == "webOnly" && config.MissingWebImagePolicy == "skip";
+            var skippedImages = new List<SkippedImage>();
+            if (config.ImageMode == "webOnly" && availablePhotos.Count == 0 && !skipMissing)
                 throw new ProductionReviewException("No reusable photo candidates found after Commons name/alias and Wikipedia searches. See provenance/commons-candidates.json; no planning or image generation purchased.");
             var photoInventory = CommonsImageSource.RankForPassage(availablePhotos, string.Join(" ", manuscript.Paragraphs.Select(p => p.Text)), manuscript.Title)
                 .Take(24).Select(c => new { c.Title, Description = c.Description[..Math.Min(600, c.Description.Length)], c.Width, c.Height, c.SourceUrl }).ToArray();
@@ -59,9 +63,17 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 "Describe what an available photo actually depicts, respecting its date and setting. Never rewrite the manuscript or invent claims from a filename. " +
                 "Use generated scene proposals only for genuine gaps. Keep all required scene IDs, distinct paragraph anchors and aspect-ratio planning fields.");
             IllustrationPlan? plan = null;
+            if (skipMissing && availablePhotos.Count == 0)
+            {
+                plan = new IllustrationPlan(new CharacterReference(manuscript.Subject, "not applicable", "not applicable", "not illustrated",
+                    "not applicable", "not applicable", "No photographs retained", "not applicable", [], []), [], []);
+                for (int slot = 1; slot <= config.IllustrationCount; slot++)
+                    skippedImages.Add(new SkippedImage($"I{slot:D2}", null, "No reusable photo candidates found; text-only chapter requested by missingWebImagePolicy=skip."));
+                log.LogWarning("[PDF][IMAGES][SKIP] No reusable photographs; continuing as text-only without purchasing a scene plan or generated images.");
+            }
             string correction = "";
             var planningErrors = new List<string>();
-            for (int attempt = 1; attempt <= config.MaxApiAttempts; attempt++)
+            for (int attempt = 1; plan is null && attempt <= config.MaxApiAttempts; attempt++)
             {
                 plan = await api.JsonAsync<IllustrationPlan>($"plan-{attempt}", config.PlannerModel,
                     planningInstructions,
@@ -87,21 +99,34 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
 
             // The accepted opening artwork is also the character reference: no duplicate paid portrait.
             var usedImages = new HashSet<string>(StringComparer.Ordinal);
-            var opening = await CreateReviewed(manuscript, plan.Character, plan.Scenes[0], [], files, ct, webImages, usedImages);
-            var reference = opening with { Scene = opening.Scene with { Id = "character" } };
-            var artwork = new List<AcceptedArtwork> { opening };
-            log.LogInformation("[PDF][CHARACTER] Reusing approved I01 as character reference; one separate generation/review avoided");
-            // Most rejected later scenes drifted in hair or facial hair. State the accepted look explicitly in every later prompt.
-            var lockedIdentity = opening.Credit is null && ContentProfiles.IsPerson(config.Profile)
-                && !string.IsNullOrWhiteSpace(opening.Review.VisibleIdentity) ? opening.Review.VisibleIdentity : null;
-            if (lockedIdentity is not null)
-                log.LogInformation("[PDF][CHARACTER][LOCK] {Identity}", lockedIdentity);
-            foreach (var scene in plan.Scenes.Skip(1))
+            AcceptedArtwork? reference = null;
+            var artwork = new List<AcceptedArtwork>();
+            string? lockedIdentity = null;
+            foreach (var scene in plan.Scenes)
             {
                 ct.ThrowIfCancellationRequested();
-                artwork.Add(await CreateReviewed(manuscript, plan.Character, scene, [reference.Path], files, ct, webImages, usedImages, lockedIdentity));
+                var accepted = await CreateReviewed(manuscript, plan.Character, scene, reference is null ? [] : [reference.Path],
+                    files, ct, webImages, usedImages, lockedIdentity);
+                if (accepted is null)
+                {
+                    skippedImages.Add(new SkippedImage(scene.Id, scene.InsertBeforeParagraphId, "No suitable reusable photo passed the bounded source/review checks."));
+                    log.LogWarning("[PDF][{Scene}][SKIP] No suitable photograph passed review; retaining every manuscript paragraph and continuing without this image.", scene.Id);
+                    continue;
+                }
+                artwork.Add(accepted);
+                if (scene.Id == "I01")
+                {
+                    reference = accepted with { Scene = accepted.Scene with { Id = "character" } };
+                    log.LogInformation("[PDF][CHARACTER] Reusing approved I01 as character reference; one separate generation/review avoided");
+                    lockedIdentity = accepted.Credit is null && ContentProfiles.IsPerson(config.Profile)
+                        && !string.IsNullOrWhiteSpace(accepted.Review.VisibleIdentity) ? accepted.Review.VisibleIdentity : null;
+                    if (lockedIdentity is not null) log.LogInformation("[PDF][CHARACTER][LOCK] {Identity}", lockedIdentity);
+                }
             }
-            await files.Save("illustrations.json", Data.Write(new { characterReference = reference, illustrations = artwork }));
+            var checkedArtwork = reference is null ? artwork : artwork.Append(reference).ToList();
+            await files.Save("image-omissions.json", Data.Write(skippedImages));
+            notes.AddRange(skippedImages.Select(s => $"{s.SceneId} omitted: {s.Reason}"));
+            await files.Save("illustrations.json", Data.Write(new { characterReference = reference, illustrations = artwork, skippedImages }));
 
             for (int attempt = 1; attempt <= config.MaxLayoutAttempts; attempt++)
             {
@@ -161,6 +186,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                             pageText = layout.Text.Where(t => t.Page == number),
                             textVerification = checks,
                             pageFlow = PageFlowContext.From(layout, number),
+                            omittedImages = skippedImages,
                             illustrations = artwork.Where(a => layout.Images.Any(i => i.Page == number && i.SceneId == a.Scene.Id))
                                 .Select(a => PageImageContext.For(manuscript, a)),
                             pdfSha256 = layout.PdfSha256
@@ -183,7 +209,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 }
                 ManuscriptReader.VerifySourceUnchanged(manuscript);
                 ManuscriptReader.VerifyEditorialApproval(manuscript, config);
-                if (artwork.Append(reference).Any(a => ManuscriptReader.HashFile(a.Path) != a.Sha256))
+                if (checkedArtwork.Any(a => ManuscriptReader.HashFile(a.Path) != a.Sha256))
                     throw new ProductionReviewException("Reviewed artwork changed before finalisation.");
                 if (styleReference is not null && ManuscriptReader.HashFile(styleReference) != styleReferenceSha256)
                     throw new ProductionReviewException("Illustration style reference changed during production.");
@@ -192,13 +218,13 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                 if (config.CreateEpub) ChapterEpub.Create(manuscript, artwork, config, Path.Combine(root, name + ".epub"));
                 var deliveredArt = Path.Combine(root, $"chapter_{manuscript.ChapterNumber:D2}_artwork");
                 Directory.CreateDirectory(deliveredArt);
-                foreach (var art in artwork.Append(reference))
+                foreach (var art in checkedArtwork)
                     File.Copy(art.Path, Path.Combine(deliveredArt, art.Scene.Id + ".png"), true);
                 await files.Save($"chapter_{manuscript.ChapterNumber:D2}_illustrations.json", Data.Write(new
                 {
                     manuscript.Subject, manuscript.SourceSha256, layout.PdfSha256,
-                    character = plan.Character, characterReview = reference.Review,
-                    characterReferenceReuses = "I01", styleReferenceSha256,
+                    character = plan.Character, characterReview = reference?.Review,
+                    characterReferenceReuses = reference is null ? null : "I01", styleReferenceSha256, skippedImages,
                     illustrations = artwork.Select(art => new
                     {
                         art.Scene, filename = Path.Combine(deliveredArt, art.Scene.Id + ".png"), art.Sha256,
@@ -218,6 +244,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
                     status = "PDF_REVIEW_PASSED", sourceSha256 = manuscript.SourceSha256,
                     designVersion = ProductionDesign.Version,
                     pdfSha256 = ManuscriptReader.HashFile(final), final, pages = layout.PageCount,
+                    retainedImages = artwork.Count, omittedImages = skippedImages.Count,
                     epubStatus = config.CreateEpub ? "STRUCTURE_CHECKED_PREVIEW_REQUIRED" : "NOT_REQUESTED",
                     costUsd = CostMeter.Since(costMark).TotalUsd, cost = CostMeter.Since(costMark)
                 }));
@@ -241,7 +268,7 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
         }
     }
 
-    private async Task<AcceptedArtwork> CreateReviewed(Manuscript manuscript, CharacterReference character,
+    private async Task<AcceptedArtwork?> CreateReviewed(Manuscript manuscript, CharacterReference character,
         IllustrationScene scene, string[] references, Artifacts files, CancellationToken ct,
         CommonsImageSource webImages, HashSet<string> usedImages, string? lockedIdentity = null)
     {
@@ -250,7 +277,10 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             var web = await TryWebImage(manuscript, character, scene, references, files, webImages, usedImages, ct);
             if (web is not null) return web;
             if (config.ImageMode == "webOnly")
+            {
+                if (config.MissingWebImagePolicy == "skip") return null;
                 throw new ProductionReviewException($"No suitable reusable web image passed review for {scene.Id}. See web-source reviews; no generated image purchased.");
+            }
             log.LogInformation("[PDF][{Scene}][WEB FALLBACK] No suitable web image; using configured generation fallback", scene.Id);
         }
         string? correction = null;
@@ -430,7 +460,8 @@ public sealed class IllustratedPipeline(ProductionConfig config, string style, P
             $"Image review: {ProductionPrompts.Version}; minimum {config.MinimumImageScore}/100 (40% style, 30% character, 30% quality); every category at least 50; hard defects cannot be averaged away.\n\n" +
             $"Photograph review style: {config.ImageReview.PhotographStyle}; monochrome allowed: {config.ImageReview.AllowBlackAndWhite}; archival wear allowed: {config.ImageReview.AllowArchivalWear}; opening portrait required for people: {config.ImageReview.RequireOpeningPortrait}. Full settings are in review-policy.json.\n\n" +
             $"Source: {manuscript.SourcePath}\n\nSource SHA-256: {manuscript.SourceSha256}\n\nPDF: {final ?? "No final PDF promoted; inspect retained previews and review JSON."}\n\n" +
-            (layout is null ? "" : $"PDF pages: {layout.PageCount}. Minimum effective artwork resolution: {layout.Images.Min(i => i.EffectiveDpi):F1} PPI. " +
+            (layout is null ? "" : $"PDF pages: {layout.PageCount}. " +
+                (layout.Images.Count == 0 ? "No photographs retained; text-only chapter. " : $"Minimum effective artwork resolution: {layout.Images.Min(i => i.EffectiveDpi):F1} PPI. ") +
                 $"Exact selectable text/paragraph comparison: {(checks?.Passed == true ? "PASS" : "FAIL")}. " +
                 "Subject, head/object cropping, unwanted image text and all rendered-page reviews: PASS.\n\n") +
             "Measured page count, per-image PPI/print dimensions and exact text comparison results are recorded in layout-*.json, " +

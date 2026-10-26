@@ -37,6 +37,12 @@ internal static class ImageReviewSettingsTests
         catch (InvalidDataException) { invalid = true; }
         Check(invalid, "Unknown review style was silently accepted.");
         Check(Data.Read<ProductionConfig>("{}").ImageReview.AllowBlackAndWhite, "Legacy config compatibility lost.");
+        bool invalidSkip = false;
+        try { (config with { ImageMode = "generated", MissingWebImagePolicy = "skip" }).Validate(); }
+        catch (InvalidDataException) { invalidSkip = true; }
+        Check(invalidSkip, "Missing-photo skip policy silently permitted generated replacements.");
+        Check(ProfilePrompts.PageReview(config with { MissingWebImagePolicy = "skip" }).Contains("They are not required illustrations"),
+            "Page reviewer was not told that omitted photographs are intentional.");
         Console.WriteLine("PASS configurable image review: photo/art prompt isolation, documentary/archival/editorial styles, portrait and archival switches, required checks and legacy defaults");
     }
 }
