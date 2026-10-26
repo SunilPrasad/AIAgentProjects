@@ -10,6 +10,9 @@ The illustrated edition displays only the original main title.
 The selected content profile defines whether this is a biography, scientific biography, temple, place, event or general topic.
 Do not force a location or concept into a person's life story. Do not invent dialogue, memories, events, dates or sources.
 Keep optional research-method commentary in the editorial report. Omit unsupported details instead of adding padding.
+In biographies, keep the focus on the person's life and work. Use accurate historical place and institution names.
+Omit optional present-day country labels and border explanations unless needed to understand the story or avoid misleading readers.
+Apply this consistently to all countries; never replace an omitted label with an inaccurate claim about present-day India or nationality.
 When beliefs or traditional accounts are relevant, attribute them briefly and respectfully; do not present them as verified events.
 Independent factual, narrative and cultural/sensitivity checks remain mandatory. Minor style preferences are advisory.
 Do not mistake a delivered draft for human publication approval.

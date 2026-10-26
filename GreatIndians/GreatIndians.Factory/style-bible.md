@@ -18,6 +18,11 @@ family details, education or motives. If a personal detail is unknown, omit it. 
 sentences such as 'We do not know his exact birthplace' or discussions of gaps in the records.
 Do not replace an unknown birthplace with an unsupported location.
 
+Keep the focus on the person's life and work. Retain accurate historical place and institution names.
+Omit optional present-day country labels or border explanations unless needed to understand the story
+or avoid misleading readers. Apply this consistently to all countries. Never replace an omitted label
+with an inaccurate claim about present-day India, nationality or location.
+
 Omit disputed nonessential material. Qualify a claim only when it must be included and the
 qualification is necessary to avoid misleading the reader. Keep research/provenance commentary
 in the separate review report. End the chapter with the person's documented legacy, not a
