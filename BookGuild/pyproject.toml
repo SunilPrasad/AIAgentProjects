@@ -1,0 +1,28 @@
+[project]
+name = "bookguild"
+version = "0.1.0"
+description = "Book Guild - a multi-agent desktop app that creates sellable books"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.7",
+    "httpx>=0.27",
+    "qasync>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bookguild", "bookguild.ui", "bookguild.stages"]
+
+[tool.setuptools.package-data]
+bookguild = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

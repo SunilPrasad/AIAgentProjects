@@ -1,0 +1,21 @@
+# Book Guild settings.
+# This file is safe to commit: it never contains secrets.
+
+[app]
+# Where each book gets its own folder.
+books_dir = "~/Documents/BookGuild"
+# Active model profile from config/models.toml: test | balanced | quality
+model_profile = "test"
+# Optional: your email or website, sent to Wikimedia (its robot policy asks tools for contact details).
+contact = ""
+
+# The NAMES of the environment variables that hold your API keys.
+# The keys themselves stay in your Windows environment and are never written to disk or logs.
+# Change a name here if your variable is called something else.
+[keys]
+openrouter = "OPENROUTER_API_KEY"   # required
+tavily     = "TAVILY_API_KEY"       # optional - research (Phase 4)
+exa        = "EXA_API_KEY"          # optional - research (Phase 4)
+pexels     = "PEXELS_API_KEY"       # optional - images (Phase 7)
+pixabay    = "PIXABAY_API_KEY"      # optional - images (Phase 7)
+unsplash   = "UNSPLASH_ACCESS_KEY"  # optional - images (Phase 7)

@@ -1,0 +1,55 @@
+# Which OpenRouter model each Guild role uses, per profile.
+# Edit here or via AI > Models... in the app. Prices are per million tokens (in / out), checked 2026-10-27.
+#
+# Rules (checked by the app):
+#   - each Scribe uses a different provider (the part before "/")
+#   - the Council (jurors + chair) uses no provider that any Scribe uses
+#
+# Roles:
+#   default   Steward, Cartographer, Scouts, Curator, Illuminator (text)
+#   scribes   one model per Scribe; the Architects reuse this list. Length = number of drafts (3-5)
+#   jurors    one model per Council juror
+#   chair     Council chair: confirms the winner and writes the revision note
+#   archivist fact-checker
+#   image     AI image generation for chapter illustrations
+#   cover_image  AI cover art; must support 2K output for print (flash-lite can't: 848x1264 ≈ 138 dpi)
+#   fallback  tried once when a role's own model keeps failing
+#   search            web search provider the Scouts use: openrouter_exa | duckduckgo | tavily | exa
+#   search_fallback   used when the primary search fails or its API key is missing
+#   (Wikipedia, OpenAlex and Crossref are free and always added for evidence books)
+
+[profiles.test]
+default   = "qwen/qwen3.7-flash"                        # 0.03 / 0.13
+scribes   = ["deepseek/deepseek-v4-flash", "qwen/qwen3.7-flash", "google/gemma-4-26b-a4b-it"]
+jurors    = ["openai/gpt-oss-20b", "mistralai/mistral-small-3.2-24b-instruct", "meta-llama/llama-3.3-70b-instruct"]
+chair     = "anthropic/claude-haiku-5.5"                # 0.10 / 0.50
+archivist = "anthropic/claude-haiku-5.5"
+image     = "google/gemini-3.1-flash-lite-image"
+cover_image = "google/gemini-3.1-flash-image"   # 2K: 1696x2528, ~$0.10 per image
+fallback  = "openai/gpt-oss-120b"
+search          = "openrouter_exa"   # ~$0.007 per search, no extra key
+search_fallback = "duckduckgo"
+
+[profiles.balanced]
+default   = "qwen/qwen3.8-flash"
+scribes   = ["deepseek/deepseek-v4.1-flash", "qwen/qwen3.8-flash", "google/gemini-3.1-flash-lite"]
+jurors    = ["openai/gpt-6-luna", "mistralai/mistral-small-2603", "z-ai/glm-5.3-flash"]
+chair     = "anthropic/claude-haiku-5.5"
+archivist = "anthropic/claude-haiku-5.5"
+image     = "google/gemini-3.1-flash-image"
+cover_image = "google/gemini-3.1-flash-image"
+fallback  = "openai/gpt-6-luna"
+search          = "openrouter_exa"
+search_fallback = "duckduckgo"
+
+[profiles.quality]
+default   = "qwen/qwen3.8-flash"
+scribes   = ["deepseek/deepseek-v4-pro", "qwen/qwen3.7-plus", "google/gemini-3.5-flash"]
+jurors    = ["openai/gpt-6.1-terra", "mistralai/mistral-large-2512", "moonshotai/kimi-k2.6"]
+chair     = "anthropic/claude-sonnet-5.5"
+archivist = "anthropic/claude-sonnet-5.5"
+image     = "google/gemini-3-pro-image"
+cover_image = "google/gemini-3-pro-image"   # 2K, ~$0.14 per image
+fallback  = "openai/gpt-6-luna"
+search          = "openrouter_exa"
+search_fallback = "duckduckgo"

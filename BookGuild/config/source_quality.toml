@@ -1,0 +1,29 @@
+# How research sources are scored (0-100). Edit freely: lists match a domain and its subdomains.
+# Higher-scoring sources are given to the Scouts first; blocked ones are never used.
+
+[scores]
+scholarly = 90   # papers found through OpenAlex / Crossref
+gov_edu   = 85   # .gov, .edu, .ac.xx, .nic.in ...
+trusted   = 80   # domains in the trusted list below
+wikipedia = 65   # good starting point, but cite primary sources where possible
+default   = 50   # everything else
+low       = 25   # domains in the low list below
+
+[domains]
+trusted = [
+    "britannica.com", "nature.com", "science.org", "sciencedirect.com", "springer.com", "wiley.com",
+    "jstor.org", "ncbi.nlm.nih.gov", "nih.gov", "who.int", "nasa.gov", "noaa.gov",
+    "smithsonianmag.com", "si.edu", "nationalgeographic.com", "bbc.co.uk", "bbc.com", "reuters.com",
+    "apnews.com", "nobelprize.org", "royalsocietypublishing.org", "acs.org", "aps.org", "aip.org",
+    "thehindu.com", "ias.ac.in", "insaindia.res.in", "pib.gov.in", "britishmuseum.org", "metmuseum.org",
+    "loc.gov", "archives.gov", "history.com", "newscientist.com", "scientificamerican.com",
+]
+low = [
+    "medium.com", "blogspot.com", "wordpress.com", "quora.com", "reddit.com", "answers.com", "ehow.com",
+    "brainly.com", "brainly.in", "scribd.com", "slideshare.net", "coursehero.com", "studocu.com",
+    "byjus.com", "toppr.com", "vedantu.com",
+]
+blocked = [
+    "pinterest.com", "facebook.com", "instagram.com", "tiktok.com", "x.com", "twitter.com",
+    "youtube.com", "amazon.com", "ebay.com",
+]
