@@ -1,4 +1,5 @@
-"""Book-wide style samples, stored independently of AI-generated profiles."""
+"""Book-wide style samples. They are your own input, so they live in the book folder and are
+shared by every workspace (storage.py), independently of AI-generated profiles."""
 
 from __future__ import annotations
 
@@ -24,20 +25,20 @@ REFERENCE_GUIDANCE = (
 
 
 def load_references(book: Book) -> list[dict[str, str]]:
-    path = book.folder / MANIFEST
+    path = book.root / MANIFEST
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
 def _reference_path(book: Book, relative: str) -> Path:
-    root = (book.folder / "style/references").resolve()
-    path = (book.folder / relative).resolve()
+    root = (book.root / "style/references").resolve()
+    path = (book.root / relative).resolve()
     if not path.is_relative_to(root) or path.suffix.lower() != ".png":
         raise PermanentError("Invalid style reference path", use_fallback=False)
     return path
 
 
 def _save(book: Book, references: list[dict[str, str]]) -> None:
-    path = book.folder / MANIFEST
+    path = book.root / MANIFEST
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(references, indent=2, ensure_ascii=False), encoding="utf-8")

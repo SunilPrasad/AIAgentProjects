@@ -20,11 +20,11 @@ def test_samples_are_portable_resized_and_originals_preserved(tmp_path):
     source.write_bytes(png_bytes(3000, 2000))
     add_reference(book, source)
     saved = load_references(book)
-    path = book.folder / saved[0]["file"]
+    path = book.root / saved[0]["file"]
     assert QImage(str(path)).width() == 1024
     assert saved[0]["name"] == source.name
     assert reference_data_urls(book)[0].startswith("data:image/png;base64,")
-    reopened = storage.open_book(book.folder)
+    reopened = storage.open_book(book.root)
     assert load_references(reopened) == saved
     remove_reference(reopened, saved[0]["file"])
     assert source.exists() and not path.exists() and load_references(reopened) == []
@@ -42,14 +42,14 @@ def test_reference_limits_and_missing_files_fail_explicitly(tmp_path):
         add_reference(book, sample)
     with pytest.raises(PermanentError, match="up to 3"):
         add_reference(book, sample)
-    (book.folder / load_references(book)[0]["file"]).unlink()
+    (book.root / load_references(book)[0]["file"]).unlink()
     with pytest.raises(PermanentError, match="missing"):
         reference_data_urls(book)
 
 
 def test_references_cannot_read_outside_managed_folder(tmp_path):
     book = storage.create_book(tmp_path, "Style")
-    manifest = book.folder / "style/references.json"
+    manifest = book.root / "style/references.json"
     manifest.parent.mkdir(parents=True)
     manifest.write_text(json.dumps([{"name": "outside", "file": "../outside.png"}]))
     with pytest.raises(PermanentError, match="Invalid"):

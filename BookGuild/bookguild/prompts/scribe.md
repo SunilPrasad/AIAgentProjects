@@ -33,7 +33,7 @@ Hard rules (these come from hard experience):
 - Use each source for what it actually says. Don't stretch a citation to cover a nearby claim, and keep the source's own certainty ("one account says…").
 - Explain any unfamiliar idea with an everyday example the reader knows.
 - Write for the audience in the profile (age, reading level, tone, voice). Use short, clear sentences and one main idea per paragraph.
-- Length: about {{words}} words (excluding the source markers).
+- Length: roughly {{words}} words, excluding the source markers. This is a guide, not a limit: tell the chapter completely and end it properly. Never cut it short to fit a number, and never pad it to reach one.
 - Format: Markdown. One `#` chapter title, then flowing prose with at most three short `##` subheadings.
 
 Return ONLY the chapter.

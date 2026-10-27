@@ -57,7 +57,7 @@ def test_success_records_cost_and_marks_agent_done(tmp_path):
     assert result.text == "hello"
     assert events.costs == [0.01]
     assert events.statuses[-1] == ("Scout-1", Status.DONE)
-    assert storage.open_book(book.folder).spent_usd == pytest.approx(0.01)
+    assert storage.open_book(book.root).spent_usd == pytest.approx(0.01)
     cost_line = json.loads((book.folder / "costs.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert cost_line["agent"] == "Scout-1" and cost_line["model"] == "main/m"
 
@@ -182,7 +182,7 @@ def test_unusable_replies_are_still_charged(tmp_path):
 
     assert result.data == {"mode": "evidence"}
     assert len(sleeps) == 2  # bad JSON, then a lazy "{}" missing "mode"
-    assert storage.open_book(book.folder).spent_usd == pytest.approx(0.03)  # all three attempts paid
+    assert storage.open_book(book.root).spent_usd == pytest.approx(0.03)  # all three attempts paid
     records = [json.loads(line) for line in (book.folder / "costs.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [r["ok"] for r in records] == [False, False, True]
 

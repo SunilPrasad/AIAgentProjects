@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal, QSize, Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QRegularExpression, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -196,8 +196,8 @@ class ProfileView(QWidget):
         self._check("fact_check", "Fact-check every chapter (Archivist)")
 
         self._section("Size & format")
-        self._spin("target_pages", "Target pages")
-        self._spin("words_per_page", "Words per page")
+        self._range_line("target_pages", "Target pages", "e.g. 100 or 60-70")
+        self._range_line("words_per_page", "Words per page", "e.g. 250 (a guide: about 238-300) or 240-300")
         self._spin("chapter_count", "Chapters")
         self._combo("trim_size", "Trim size (inches)", {t: t for t in TRIM_SIZES})
         self._combo("paper", "Paper", {p: p for p in PAPERS})
@@ -269,6 +269,16 @@ class ProfileView(QWidget):
         edit.textChanged.connect(self._on_edit)
         self._add(name, label, edit)
 
+    def _range_line(self, name: str, label: str, placeholder: str) -> None:
+        """A number or a range like 60-70. These are guides: nothing is cut or padded to match them."""
+        edit = QLineEdit()
+        edit.setPlaceholderText(placeholder)
+        edit.setToolTip(placeholder + ". A guide for the writers, not a hard limit.")
+        edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"^\s*\d{0,4}\s*(?:(?:-|–|to)\s*\d{0,4}\s*)?$"),
+                                                      edit))
+        edit.textChanged.connect(self._on_edit)
+        self._add(name, label, edit)
+
     def _combo(self, name: str, label: str, choices: dict[str, str]) -> None:
         combo = QComboBox()
         for value, text in choices.items():
@@ -297,6 +307,7 @@ class ProfileView(QWidget):
     def _update_estimate(self) -> None:
         p = self.current_profile()
         self.estimate_label.setText(
-            f"≈ {p.target_words:,} words in total · ≈ {p.words_per_chapter:,} words per chapter · "
+            f"≈ {p.total_words_range[0]:,}–{p.total_words_range[1]:,} words in total · "
+            f"≈ {p.chapter_length_guide().replace('-', '–')} words per chapter (a guide) · "
             f"budget {format_usd(p.budget_usd)}"
         )

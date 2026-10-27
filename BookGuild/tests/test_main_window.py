@@ -195,12 +195,12 @@ def test_profile_tab_save_and_approve(tmp_path):
 
     view = window.profile_view
     assert view.widgets["working_title"].text() == "Leaves"
-    view.widgets["target_pages"].setValue(140)
+    view.widgets["target_pages"].setText("140")
     assert view.save_button.isEnabled()
 
     view.approve_button.click()
     saved = load_profile(book)
-    assert saved.target_pages == 140 and saved.approved
+    assert saved.target_pages == "140" and saved.approved
     assert window.timeline.chips["profile"].property("status") == Status.DONE
     assert not view.approve_button.isEnabled()
     assert window.book_title_label.text() == "Leaves"

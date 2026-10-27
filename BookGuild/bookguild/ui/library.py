@@ -83,10 +83,10 @@ class LibraryPanel(QWidget):
         self.agent_items.clear()
         self.stage_items.clear()
         for book in books:
-            is_open = book.folder == selected
+            is_open = book.root == selected
             book_item = QTreeWidgetItem([book.title, ""])
-            book_item.setData(0, ROLE, ("book", book.folder))
-            book_item.setToolTip(0, str(book.folder))
+            book_item.setData(0, ROLE, ("book", book.root))
+            book_item.setToolTip(0, f"{book.root}\nworkspace: {book.workspace}")
             font = book_item.font(0)
             font.setBold(is_open)
             book_item.setFont(0, font)

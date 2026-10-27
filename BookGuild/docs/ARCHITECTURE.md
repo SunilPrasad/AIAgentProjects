@@ -37,6 +37,22 @@ The main rule is that **information flows to the UI only through the EventBus**.
   - It allows only one paid step at a time per book (`busy`).
   - It passes the gateway a `step_retry`, so **Retry** in the Failures panel re-runs the whole step, not just one AI call.
 
+### Workspaces: one per model profile
+
+Each model profile (test / balanced / quality) has its **own complete workspace** for every book, so work made with one profile never shows in another:
+
+```
+<books_dir>/<book-slug>/
+    state.json, brief.md, style/      shared: the title, your brief, your visual style samples
+    workspaces/<profile>/             everything the AI makes, plus progress, costs and log
+        state.json  log.jsonl  costs.jsonl  profile.json  research/  outline.json  chapters/  images/  cover/
+```
+
+- `Book.folder` is the open workspace, which all stages read and write; `Book.root` is the book folder.
+- **Switching AI ▸ Model profile** reopens the book in that profile's workspace (`MainWindow.set_model_profile`). It's refused while agents are working.
+- The title is shared, so approving an outline or profile title in one workspace renames the book everywhere.
+- **Older books** had everything in the book folder. `storage.migrate_to_workspaces` moves that work into `workspaces/<profile>/` the first time the book is opened (the old `chapter_set`, else `test`). It flattens the short-lived `chapters/<set>/` folders and drops the set prefix from cost tags. Nothing is deleted.
+
 ## 2. Life of one AI call
 
 ```mermaid

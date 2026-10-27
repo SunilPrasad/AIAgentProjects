@@ -9,19 +9,21 @@ from bookguild.events import LogEntry, Status
 def test_create_book_makes_folder_with_state(tmp_path):
     book = storage.create_book(tmp_path, "The History of Tea!")
 
-    assert book.folder == tmp_path / "the-history-of-tea"
+    assert book.root == tmp_path / "the-history-of-tea"
+    assert book.folder == book.root / "workspaces" / "test"
+    shared = json.loads((book.root / "state.json").read_text(encoding="utf-8"))
+    assert shared == {"title": "The History of Tea!", "created": book.created}
     state = json.loads((book.folder / "state.json").read_text(encoding="utf-8"))
-    assert state["title"] == "The History of Tea!"
     assert state["stages"] == {stage: Status.IDLE for stage in storage.STAGES}
-    assert "folder" not in state
+    assert (book.root / "brief.md").exists()
 
 
 def test_same_title_gets_unique_folder(tmp_path):
     first = storage.create_book(tmp_path, "Tea")
     second = storage.create_book(tmp_path, "Tea")
 
-    assert first.folder.name == "tea"
-    assert second.folder.name == "tea-2"
+    assert first.root.name == "tea"
+    assert second.root.name == "tea-2"
 
 
 def test_empty_title_rejected(tmp_path):
@@ -35,7 +37,7 @@ def test_state_round_trip(tmp_path):
     book.spent_usd = 1.25
     storage.save_book(book)
 
-    reopened = storage.open_book(book.folder)
+    reopened = storage.open_book(book.root)
     assert reopened.stages["research"] == Status.DONE
     assert reopened.spent_usd == 1.25
 
@@ -75,7 +77,7 @@ def test_brief_is_saved_and_title_is_optional(tmp_path):
 def test_explicit_title_wins_over_brief(tmp_path):
     book = storage.create_book(tmp_path, "Some long idea about tea", title="Leaves of Empire")
     assert book.title == "Leaves of Empire"
-    assert book.folder.name == "leaves-of-empire"
+    assert book.root.name == "leaves-of-empire"
 
 
 def test_provisional_title_is_shortened_at_a_word():

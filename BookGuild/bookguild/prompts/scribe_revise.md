@@ -26,6 +26,6 @@ Rules for revising:
 - Never add "Imagine…" scenes, or what a person saw, felt, thought or said, unless a source states it.
 - Keep what already works. Don't rewrite good passages for the sake of it.
 - Keep the source markers accurate: every factual sentence ends with its [S#].
-- Keep about {{words}} words, the `#` title and at most three `##` subheadings.
+- Keep roughly {{words}} words (a guide, not a limit: never cut good content to fit or pad to reach it), the `#` title and at most three `##` subheadings.
 
 Return ONLY the complete revised chapter.

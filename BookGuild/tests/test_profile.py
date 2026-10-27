@@ -20,7 +20,7 @@ def test_messy_model_output_is_cleaned_with_warnings():
     assert profile.mode == "evidence"
     assert profile.trim_size == "6x9"
     assert profile.image_strategy == "licensed_web"
-    assert profile.target_pages == 800  # clamped
+    assert profile.target_pages == "800"  # clamped
     assert profile.chapter_count == 10  # default kept
     assert profile.citations_required is True
     assert profile.must_include == ["Shennong legend", "Opium Wars"]
@@ -75,3 +75,29 @@ def test_normalize_age():
     assert normalize_age("Adults") == "adult"
     assert normalize_age("8+") == "8+"
     assert normalize_age("") == "adult"
+
+
+def test_pages_and_words_accept_ranges_and_are_guides():
+    profile, warnings = BookProfile.from_dict({"target_pages": "60 to 70", "words_per_page": 250,
+                                               "chapter_count": 8})
+    assert warnings == []
+    assert profile.target_pages == "60-70" and profile.pages_range == (60, 70)
+    assert profile.words_per_page_range == (238, 300)  # a single number is a guide: -5% .. +20%
+    assert profile.chapter_words_range == (60 * 238 // 8, 70 * 300 // 8)
+    assert profile.chapter_length_guide() == "1,785-2,625"
+    assert profile.target_words == 65 * 250  # estimates use the middle
+
+    ranged, _ = BookProfile.from_dict({"words_per_page": "240-300"})
+    assert ranged.words_per_page_range == (240, 300)  # an explicit range is used as given
+
+    bad, warnings = BookProfile.from_dict({"target_pages": "about a hundred"})
+    assert bad.target_pages == "100" and "not a number or range" in warnings[0]
+
+
+def test_writers_get_room_for_the_longest_chapter():
+    from bookguild.stages.chapters import long_enough, reply_allowance
+
+    assert reply_allowance(2625) >= 2625 * 3  # never cut off at the top of the range
+    long_enough(1785)("word " * 800)  # 800 words: shorter than the guide but fine (only broken replies retry)
+    with pytest.raises(Exception, match="too short"):
+        long_enough(1785)("word " * 100)

@@ -409,19 +409,19 @@ class MainWindow(QMainWindow):
     # ---------- books ----------
 
     def refresh_library(self) -> None:
-        selected = self.book.folder if self.book else None
-        self.library.show_books(storage.list_books(self.settings.books_dir), selected)
+        selected = self.book.root if self.book else None
+        self.library.show_books(storage.list_books(self.settings.books_dir, self.model_profile.name), selected)
 
     def create_book(self, brief: str, title: str = "") -> Book:
-        book = storage.create_book(self.settings.books_dir, brief, title)
+        book = storage.create_book(self.settings.books_dir, brief, title, workspace=self.model_profile.name)
         self.open_book(book)
         self.refresh_library()
-        self.bus.log(f"Created book '{book.title}' in {book.folder}", level="success")
+        self.bus.log(f"Created book '{book.title}' in {book.root}", level="success")
         return book
 
     def open_book_folder(self, folder: Path) -> None:
         try:
-            self.open_book(storage.open_book(folder))
+            self.open_book(storage.open_book(folder, self.model_profile.name))
         except (OSError, ValueError, KeyError) as error:
             QMessageBox.warning(self, "Cannot open book", f"Could not open {folder}:\n{error}")
 
@@ -437,7 +437,8 @@ class MainWindow(QMainWindow):
                                    make_search=lambda models: SearchClient(self.settings, models.default),
                                    make_image_search=lambda: ImageSearch(self.settings))
         self._show_book_title()
-        self.book_folder_label.setText(str(book.folder))
+        self.book_folder_label.setText(f"{book.root}   ·   workspace: {book.workspace} "
+                                       "(switch with AI ▸ Model profile)")
         self.brief_view.setPlainText(storage.read_brief(book))
         self.save_brief_button.setEnabled(False)
         self.profile_view.set_profile(load_profile(book), book.stages["profile"])
@@ -587,7 +588,7 @@ class MainWindow(QMainWindow):
         from bookguild.image_style import load_references
 
         if self.book:
-            self.profile_view.set_style_samples(load_references(self.book), self.book.folder)
+            self.profile_view.set_style_samples(load_references(self.book), self.book.root)
 
     def reset_view(self) -> None:
         """Show the saved state of the open book (undoes anything the demo drew)."""
@@ -622,11 +623,27 @@ class MainWindow(QMainWindow):
                      "success", agent="Steward")
 
     def set_model_profile(self, name: str) -> None:
+        """Switch profile. Each profile has its own workspace, so the open book switches to that
+        profile's work (only the title, brief and style samples are shared)."""
+        if self.session and self.session.busy:
+            QMessageBox.information(self, "Please wait", f"Can't switch profiles while {self.session.busy}.")
+            self._check_profile_action(self.model_profile.name)
+            return
         self.settings.model_profile = name
         save_settings(self.settings, self.settings_path)
         self.library.set_models(self.model_profile.model_for)
         self.refresh_key_status()
-        self.bus.log(f"Model profile set to '{name}'.", "success")
+        if self.book is not None:
+            self.open_book(storage.open_book(self.book.root, name))
+            self.bus.log(f"Switched to the '{name}' workspace - only the title, brief and style samples are shared "
+                         "with the other profiles.", "success")
+        else:
+            self.refresh_library()
+            self.bus.log(f"Model profile set to '{name}'.", "success")
+
+    def _check_profile_action(self, name: str) -> None:
+        for action in self.profile_actions.actions():
+            action.setChecked(action.text() == name)
 
     def _open_models_dialog(self) -> None:
         dialog = ModelsDialog(self.profiles, self.model_profile.name, self.settings, self)
@@ -764,7 +781,7 @@ class MainWindow(QMainWindow):
 
     def _open_book_folder_in_explorer(self) -> None:
         if self.book:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.book.folder)))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.book.root)))
 
     def _open_books_dir_in_explorer(self) -> None:
         self.settings.books_dir.mkdir(parents=True, exist_ok=True)

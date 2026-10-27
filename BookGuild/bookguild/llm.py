@@ -47,7 +47,16 @@ class OpenRouterClient:
     def __init__(self, api_key: str | None, transport: httpx.AsyncBaseTransport | None = None,
                  timeout_s: float = DEFAULT_TIMEOUT_S):
         self.api_key = api_key
-        self.http = httpx.AsyncClient(base_url=BASE_URL, timeout=timeout_s, transport=transport)
+        self._transport, self._timeout_s = transport, timeout_s
+        self._http: httpx.AsyncClient | None = None
+
+    @property
+    def http(self) -> httpx.AsyncClient:
+        """Created on first use: setting up the secure connection takes about a second, which would
+        otherwise slow every app start and every window."""
+        if self._http is None:
+            self._http = httpx.AsyncClient(base_url=BASE_URL, timeout=self._timeout_s, transport=self._transport)
+        return self._http
 
     async def chat(self, model: str, messages: list[dict], *, max_tokens: int | None = None,
                    temperature: float | None = None, json_mode: bool = False,
@@ -120,7 +129,8 @@ class OpenRouterClient:
         return sorted(models, key=lambda m: m.id)
 
     async def close(self) -> None:
-        await self.http.aclose()
+        if self._http is not None:
+            await self._http.aclose()
 
     async def _post(self, path: str, payload: dict) -> dict:
         return await self._request("POST", path, json=payload)

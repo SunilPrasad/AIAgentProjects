@@ -48,6 +48,8 @@ MODE_DEFAULTS = {
 }
 
 # (min, max) for every number field.
+RANGE_FIELDS = ("target_pages", "words_per_page")
+WORDS_TOLERANCE = (0.95, 1.2)
 LIMITS = {
     "target_pages": (10, 800),
     "words_per_page": (10, 400),
@@ -72,8 +74,8 @@ class BookProfile:
     image_strategy: str = "licensed_web"
     images_per_chapter: int = 2
     image_style: str = ""
-    target_pages: int = 100
-    words_per_page: int = 250
+    target_pages: str = "100"  # a number or a range, e.g. "60-70"
+    words_per_page: str = "250"  # a number (treated as a guide: 250 means about 238-300) or a range
     chapter_count: int = 10
     trim_size: str = "6x9"
     paper: str = "white"
@@ -84,13 +86,56 @@ class BookProfile:
     style_notes: str = ""  # examples and preferences taken from the brief
     approved: bool = False
 
+    # Pages and words per page are GUIDES, not fixed numbers. Writers get a range, and nothing is
+    # ever cut short or padded to hit an exact count.
+
+    @property
+    def pages_range(self) -> tuple[int, int]:
+        return parse_range(self.target_pages) or (100, 100)
+
+    @property
+    def words_per_page_range(self) -> tuple[int, int]:
+        """A single number gets a comfortable band: 250 → 238-300 (−5% … +20%)."""
+        low, high = parse_range(self.words_per_page) or (250, 250)
+        if low == high:
+            return round(low * WORDS_TOLERANCE[0]), round(low * WORDS_TOLERANCE[1])
+        return low, high
+
+    @property
+    def pages_mid(self) -> int:
+        low, high = self.pages_range
+        return (low + high) // 2
+
+    @property
+    def words_per_page_mid(self) -> int:
+        low, high = parse_range(self.words_per_page) or (250, 250)
+        return (low + high) // 2
+
     @property
     def target_words(self) -> int:
-        return self.target_pages * self.words_per_page
+        """The middle of the range, for estimates (page count, spine width)."""
+        return self.pages_mid * self.words_per_page_mid
 
     @property
     def words_per_chapter(self) -> int:
+        """The middle of the range, for estimates."""
         return self.target_words // max(1, self.chapter_count)
+
+    @property
+    def total_words_range(self) -> tuple[int, int]:
+        (pages_low, pages_high), (words_low, words_high) = self.pages_range, self.words_per_page_range
+        return pages_low * words_low, pages_high * words_high
+
+    @property
+    def chapter_words_range(self) -> tuple[int, int]:
+        low, high = self.total_words_range
+        chapters = max(1, self.chapter_count)
+        return low // chapters, high // chapters
+
+    def chapter_length_guide(self) -> str:
+        """e.g. "2,000-2,700" - what the Scribes aim for."""
+        low, high = self.chapter_words_range
+        return f"{low:,}-{high:,}"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -110,13 +155,16 @@ class BookProfile:
 
         mode = _choice(data.get("mode"), MODES, "evidence", "mode", warnings)
         values = {**asdict(cls()), **MODE_DEFAULTS[mode], "mode": mode}
+        values["words_per_page"] = str(values["words_per_page"])
         known = {f.name for f in fields(cls)}
 
         for name, raw in data.items():
             if name not in known or name == "mode" or raw is None:
                 continue
             default = values[name]
-            if name in LIMITS:
+            if name in RANGE_FIELDS:
+                values[name] = _clamped_range(raw, name, str(default), warnings)
+            elif name in LIMITS:
                 values[name] = _clamped(raw, name, default, warnings)
             elif isinstance(default, bool):
                 values[name] = _boolean(raw)
@@ -165,6 +213,19 @@ def normalize_age(value: str) -> str:
     return text
 
 
+def parse_range(value) -> tuple[int, int] | None:
+    """"60-70", "60 – 70", "60 to 70", 65, "65" → (low, high). None if it isn't a number or range."""
+    numbers = re.findall(r"\d+(?:\.\d+)?", str(value))
+    if not numbers or len(numbers) > 2:
+        return None
+    values = [round(float(n)) for n in numbers]
+    return min(values), max(values)
+
+
+def format_range(low: int, high: int) -> str:
+    return str(low) if low == high else f"{low}-{high}"
+
+
 # ---------- helpers for from_dict ----------
 
 def _choice(value, allowed, default: str, name: str, warnings: list[str]) -> str:
@@ -190,6 +251,19 @@ def _clamped(value, name: str, default, warnings: list[str]):
         warnings.append(f"{name} {number} is outside {low}-{high} - using {clamped}.")
         return number_type(clamped)
     return number
+
+
+def _clamped_range(value, name: str, default: str, warnings: list[str]) -> str:
+    parsed = parse_range(value)
+    if parsed is None:
+        warnings.append(f"{name} '{value}' is not a number or range like 60-70 - using {default}.")
+        return parse_range(default) and format_range(*parse_range(default)) or default
+    low_limit, high_limit = LIMITS[name]
+    low, high = (max(low_limit, min(high_limit, n)) for n in parsed)
+    if (low, high) != parsed:
+        warnings.append(f"{name} {format_range(*parsed)} is outside {low_limit}-{high_limit} - using "
+                        f"{format_range(low, high)}.")
+    return format_range(low, high)
 
 
 def _boolean(value) -> bool:

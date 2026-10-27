@@ -28,6 +28,8 @@ from typing import Awaitable, Callable
 from bookguild import prompts, storage
 from bookguild.chapters import (
     ChapterRecord,
+    chapters_folder,
+    cost_tag,
     read_file,
     read_json,
     word_count,
@@ -112,13 +114,13 @@ async def run(job: ChapterJob, numbers: list[int], instruction: str = "") -> lis
 
 def clear_chapter(book: Book, number: int) -> None:
     """Forget all saved work for a chapter, so it is written from scratch."""
-    shutil.rmtree(book.folder / "chapters" / f"{number:02d}", ignore_errors=True)
+    shutil.rmtree(chapters_folder(book) / f"{number:02d}", ignore_errors=True)
 
 
 async def write_chapter(job: ChapterJob, number: int, instruction: str = "") -> ChapterRecord:
     plan = job.outline.chapters[number - 1]
     record = ChapterRecord(number=number, title=plan.title, status=Status.RUNNING)
-    gateway = job.make_gateway(step_retry=lambda: job.retry_chapter(number), cost_tag=f"ch{number:02d}")
+    gateway = job.make_gateway(step_retry=lambda: job.retry_chapter(number), cost_tag=cost_tag(job.book, number))
 
     def step(name: str) -> None:
         record.step = name
@@ -180,7 +182,7 @@ async def revise_chapter(job: ChapterJob, number: int, instruction: str, scribe:
     """Your change to a finished chapter: one revision by the winning Scribe, then the fact-check."""
     plan = job.outline.chapters[number - 1]
     record = ChapterRecord(number=number, title=plan.title, status=Status.RUNNING, winner=scribe)
-    gateway = job.make_gateway(step_retry=None, cost_tag=f"ch{number:02d}")
+    gateway = job.make_gateway(step_retry=None, cost_tag=cost_tag(job.book, number))
 
     def step(name: str) -> None:
         record.step = name
@@ -244,19 +246,19 @@ async def research_chapter(job: ChapterJob, gateway: AIGateway, number: int, pla
 
 async def write_drafts(job: ChapterJob, gateway: AIGateway, number: int, plan: ChapterPlan, evidence: str,
                        instruction: str) -> list[dict]:
-    target = job.profile.words_per_chapter
+    shortest, longest = job.profile.chapter_words_range
     prompt_values = dict(profile=job.profile.for_prompt(), brief=storage.read_brief(job.book),
                          outline=job.outline.as_text(), number=str(number), title=plan.title, summary=plan.summary,
                          key_points="; ".join(plan.key_points) or "(see plan)", evidence=evidence,
-                         words=str(target),
+                         words=job.profile.chapter_length_guide(),
                          instruction=f"Extra instruction from the author: {instruction}" if instruction else "")
 
     async def draft(scribe: str) -> dict:
         prompt = prompts.render("scribe", scribe=scribe, **prompt_values)
         result = await gateway.chat(agent=scribe, stage="chapters", model=job.models.model_for(scribe),
-                                    fallback_model=job.models.fallback, max_tokens=max(4000, target * 3),
+                                    fallback_model=job.models.fallback, max_tokens=reply_allowance(longest),
                                     thinking="off", messages=[{"role": "user", "content": prompt}],
-                                    validate=long_enough(target))
+                                    validate=long_enough(shortest))
         return {"scribe": scribe, "model": result.model, "text": result.text.strip()}
 
     results = await asyncio.gather(*(draft(s) for s in scribe_names(job.models)), return_exceptions=True)
@@ -276,12 +278,13 @@ async def revise_text(job: ChapterJob, gateway: AIGateway, scribe: str, text: st
     prompt = prompts.render("scribe_revise", scribe=scribe, book_summary=research_stage.book_summary(profile),
                             audience_age=profile.audience_age, reading_level=profile.reading_level,
                             tone=profile.tone, instruction=instruction, evidence=evidence, chapter=text,
-                            words=str(profile.words_per_chapter))
+                            words=profile.chapter_length_guide())
+    shortest, longest = profile.chapter_words_range
     result = await gateway.chat(agent=scribe, stage="chapters", model=job.models.model_for(scribe),
                                 fallback_model=job.models.fallback, thinking="off",
-                                max_tokens=max(4000, profile.words_per_chapter * 3),
+                                max_tokens=reply_allowance(max(longest, word_count(text))),
                                 messages=[{"role": "user", "content": prompt}],
-                                validate=long_enough(profile.words_per_chapter))
+                                validate=long_enough(shortest))
     return result.text.strip()
 
 
@@ -376,17 +379,25 @@ def blocking(check: dict) -> list[dict]:
     return [f for f in check["findings"] if f["severity"] in BLOCKING]
 
 
-def long_enough(target_words: int):
-    """A draft must reach at least 40% of the target length (else it's retried)."""
+def long_enough(shortest_words: int):
+    """Only catches a clearly broken reply (under 40% of the shortest length in the range); a chapter
+    a bit shorter or longer than the guide is fine. There is no upper limit."""
     def validate(text: str) -> None:
-        if word_count(text) < 0.4 * target_words:
-            raise TransientError(f"Chapter too short: {word_count(text)} words, target {target_words}")
+        if word_count(text) < 0.4 * shortest_words:
+            raise TransientError(f"Chapter too short: {word_count(text)} words, guide {shortest_words}+")
     return validate
+
+
+def reply_allowance(longest_words: int) -> int:
+    """Max reply tokens: room for the LONGEST chapter in the range plus [S#] markers and headings
+    (about 1.4 tokens per word, doubled for safety), so a chapter is never cut off mid-way."""
+    return max(6000, longest_words * 3)
 
 
 def task_text(job: ChapterJob, number: int, plan: ChapterPlan) -> str:
     return (f"Write chapter {number}, '{plan.title}', of '{job.outline.title}' for readers aged "
-            f"{job.profile.audience_age}, about {job.profile.words_per_chapter} words. Plan: {plan.summary} "
+            f"{job.profile.audience_age}, roughly {job.profile.chapter_length_guide()} words (a guide, not a limit). "
+            f"Plan: {plan.summary} "
             f"Key points: {'; '.join(plan.key_points)}")
 
 

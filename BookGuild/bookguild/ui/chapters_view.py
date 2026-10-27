@@ -48,8 +48,10 @@ class ChaptersView(QWidget):
         self.status_label.setWordWrap(True)
         self.write_button = QPushButton("Write remaining chapters")
         self.write_button.clicked.connect(self.write_requested)
-        self.rewrite_button = QPushButton("Rewrite selected")
-        self.rewrite_button.setToolTip("Throw away this chapter's research, drafts and text and write it again")
+        self.rewrite_button = QPushButton("Write / rewrite selected")
+        self.rewrite_button.setToolTip("Write just the selected chapter (from scratch if it was written before). "
+                                       "To try other models, switch AI > Model profile: each profile has its own "
+                                       "workspace.")
         self.rewrite_button.clicked.connect(lambda: self._with_selected(self.rewrite_requested.emit))
         self.revise_button = QPushButton("Revise selected…")
         self.revise_button.setToolTip("Tell a Scribe what to change; the Archivist checks the result")

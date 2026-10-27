@@ -106,13 +106,13 @@ def estimate_pages(book: Book, profile: BookProfile, chapters: int) -> int:
     """Pages from the chapters - written ones by their words, unwritten ones at the planned length -
     plus front matter and images. Even, at least 24 (KDP's minimum)."""
     if chapters == 0:
-        text_pages = profile.target_pages
+        text_pages = profile.pages_mid
     else:
         words = 0
         for number in range(1, chapters + 1):
             written = word_count(read_file(book, number, "final.md"))
             words += written or profile.words_per_chapter
-        text_pages = words / max(1, profile.words_per_page)
+        text_pages = words / max(1, profile.words_per_page_mid)
     image_pages = 0.5 * sum(1 for s in load_slots(book) if s.status == SLOT_APPROVED)
     pages = math.ceil(text_pages + image_pages + FRONT_MATTER_PAGES)
     return max(KDP_MIN_PAGES, pages + pages % 2)

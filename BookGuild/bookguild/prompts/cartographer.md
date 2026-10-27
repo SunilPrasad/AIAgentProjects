@@ -15,6 +15,7 @@ Rules:
 - `must_include`: concrete topics or points the brief says the book must cover. Do not invent new ones.
 - `style_notes`: keep any examples, comparable books or passages the author liked, close to their words.
 - `budget_usd`: use the amount the brief names, otherwise 5.
+- `target_pages` and `words_per_page`: a single number ("250") or a range ("60-70"). Use the range the brief gives if it gives one. These are guides for the writers, not exact counts.
 - Do not invent facts about the subject. This is planning only.
 
 Reply with ONLY a JSON object with exactly these keys:
@@ -33,8 +34,8 @@ Reply with ONLY a JSON object with exactly these keys:
   "image_strategy": "licensed_web | ai_generated | mixed | none",
   "images_per_chapter": 2,
   "image_style": "e.g. historical photographs and maps",
-  "target_pages": 100,
-  "words_per_page": 250,
+  "target_pages": "60-70",
+  "words_per_page": "250",
   "chapter_count": 10,
   "trim_size": "5x8 | 5.5x8.5 | 6x9 | 7x10 | 8x10 | 8.5x8.5 | 8.5x11",
   "paper": "white | cream",

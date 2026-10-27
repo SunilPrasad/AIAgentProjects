@@ -4,7 +4,7 @@ Available actions:
 - `generate_profile`: ask the Cartographer to draft the Book Profile from the brief. args: {}
 - `revise_profile`: ask the Cartographer to change the profile as described. args: {"instruction": "what to change, in the author's words"}
 - `set_profile_field`: set one profile field to an exact value. args: {"field": "<field name>", "value": "<new value>"}
-  - Use this only for a single plain value, e.g. "make it 120 pages" gives field "target_pages", value "120".
+  - Use this only for a single plain value, e.g. "make it 120 pages" gives field "target_pages", value "120", and "60 to 70 pages" gives value "60-70".
   - Valid fields: {{fields}}
 - `approve_profile`: the author approves the current profile. args: {}
 - `run_research`: send the three Scouts to research the topic (needs an approved profile). args: {}

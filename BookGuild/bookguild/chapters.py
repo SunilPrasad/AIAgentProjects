@@ -1,13 +1,13 @@
-"""Chapter records and files.
+"""Chapter records and files (inside the book's workspace - see storage.py).
 
-    chapters.json                  one ChapterRecord per outline chapter (status, words, flags, cost…)
-    chapters/NN/research.md        the chapter Scout's cited notes
-    chapters/NN/evidence.json      the source ids the Scribes were given
-    chapters/NN/drafts.json        every Scribe's draft (with [S#] source markers)
-    chapters/NN/jury.json          the Council's verdict on the drafts
-    chapters/NN/revised.md         the winner after the Chair's note
-    chapters/NN/factcheck.json     the Archivist's findings (first check, and the re-check after a fix)
-    chapters/NN/final.md           the chapter, still with [S#] markers (the export strips them)
+    chapters.json              one ChapterRecord per outline chapter (status, words, flags…)
+    chapters/NN/research.md    the chapter Scout's cited notes
+    chapters/NN/evidence.json  the source ids the Scribes were given
+    chapters/NN/drafts.json    every Scribe's draft (with [S#] source markers)
+    chapters/NN/jury.json      the Council's verdict on the drafts
+    chapters/NN/revised.md     the winner after the Chair's note
+    chapters/NN/factcheck.json the Archivist's findings (first check, and the re-check after a fix)
+    chapters/NN/final.md       the chapter, still with [S#] markers (the export strips them)
 
 Drafts keep source markers like [S17] after factual sentences so the jury and the Archivist can
 check them; `strip_markers` removes them for reading and for the printed book.
@@ -63,14 +63,18 @@ def save_records(book: Book, records: list[ChapterRecord]) -> None:
     temp_path.replace(path)
 
 
+def chapters_folder(book: Book) -> Path:
+    return book.folder / "chapters"
+
+
 def chapter_dir(book: Book, number: int) -> Path:
-    folder = book.folder / "chapters" / f"{number:02d}"
+    folder = chapters_folder(book) / f"{number:02d}"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 
 
 def read_file(book: Book, number: int, name: str) -> str:
-    path = book.folder / "chapters" / f"{number:02d}" / name
+    path = chapters_folder(book) / f"{number:02d}" / name
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
@@ -96,6 +100,12 @@ def word_count(text: str) -> int:
     return len(re.findall(r"[A-Za-z0-9'’-]+", strip_markers(text)))
 
 
+def cost_tag(book: Book, number: int) -> str:
+    """The `item` tag in costs.jsonl for a chapter's calls (so per-chapter costs add up even when
+    two chapters are written at once)."""
+    return f"ch{number:02d}"
+
+
 def chapter_cost(book: Book, number: int) -> float:
-    tag = f"ch{number:02d}"
+    tag = cost_tag(book, number)
     return sum(float(c.get("cost_usd", 0)) for c in storage.read_costs(book) if c.get("item") == tag)

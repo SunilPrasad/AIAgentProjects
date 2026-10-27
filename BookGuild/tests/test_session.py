@@ -42,11 +42,11 @@ def test_generate_profile_saves_draft_waiting_for_approval(tmp_path):
     profile = asyncio.run(session.generate_profile())
 
     assert profile.working_title == "Leaves of Empire"
-    assert load_profile(session.book).target_pages == 120
+    assert load_profile(session.book).target_pages == "120"
     assert session.book.stages["profile"] == Status.WAITING
     assert session.book.title == "Leaves of Empire"
     assert session.book.budget_usd == 4
-    assert storage.open_book(session.book.folder).stages["profile"] == Status.WAITING
+    assert storage.open_book(session.book.root).stages["profile"] == Status.WAITING
     assert session.busy is None
 
 
@@ -74,7 +74,7 @@ def test_approve_and_edit_cycle(tmp_path):
 
     message = session.set_profile_field("target_pages", "150")
     assert "150" in message
-    assert load_profile(session.book).target_pages == 150
+    assert load_profile(session.book).target_pages == "150"
     assert not load_profile(session.book).approved
     assert session.book.stages["profile"] == Status.WAITING
     assert "not a profile field" in session.set_profile_field("colour", "blue")
