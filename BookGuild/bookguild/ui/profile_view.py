@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from pathlib import Path
+
+from PySide6.QtCore import Signal, QSize, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -39,6 +45,8 @@ class ProfileView(QWidget):
     generate_requested = Signal()
     save_requested = Signal(object)  # BookProfile
     approve_requested = Signal(object)  # BookProfile
+    style_samples_added = Signal(object)  # list[Path]
+    style_sample_removed = Signal(str)  # managed relative path
 
     def __init__(self):
         super().__init__()
@@ -144,6 +152,25 @@ class ProfileView(QWidget):
 
     # ---------- form ----------
 
+    def set_style_samples(self, references: list[dict[str, str]], folder: Path) -> None:
+        self.sample_list.clear()
+        for reference in references:
+            item = QListWidgetItem(QIcon(str(folder / reference["file"])), reference["name"])
+            item.setData(Qt.ItemDataRole.UserRole, reference["file"])
+            self.sample_list.addItem(item)
+        self.remove_sample_button.setEnabled(False)
+
+    def _add_samples(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(self, "Book-wide image style samples", "",
+                                              "Images (*.png *.jpg *.jpeg *.webp)")
+        if paths:
+            self.style_samples_added.emit([Path(p) for p in paths])
+
+    def _remove_sample(self) -> None:
+        item = self.sample_list.currentItem()
+        if item:
+            self.style_sample_removed.emit(item.data(Qt.ItemDataRole.UserRole))
+
     def _build_fields(self) -> None:
         self.widgets: dict[str, QWidget] = {}
 
@@ -187,7 +214,31 @@ class ProfileView(QWidget):
         self._section("Images")
         self._combo("image_strategy", "Image source", IMAGE_STRATEGIES)
         self._spin("images_per_chapter", "Images per chapter")
-        self._line("image_style", "Image style")
+        self._text("image_style", "Book-wide image instructions",
+                   "Style, colours, lighting, realism and details to use consistently throughout the book")
+        samples = QWidget()
+        sample_layout = QVBoxLayout(samples)
+        sample_layout.setContentsMargins(0, 0, 0, 0)
+        description = QLabel("Add up to 3 style samples for all AI chapter images and cover art. "
+                             "Samples are saved immediately with this book and sent to the image provider "
+                             "when generating. New settings apply to future generations.")
+        description.setWordWrap(True)
+        sample_layout.addWidget(description)
+        self.sample_list = QListWidget()
+        self.sample_list.setIconSize(QSize(72, 72))
+        self.sample_list.setMaximumHeight(180)
+        sample_layout.addWidget(self.sample_list)
+        sample_buttons = QHBoxLayout()
+        add_sample_button = QPushButton("Add style samples…")
+        add_sample_button.clicked.connect(self._add_samples)
+        self.remove_sample_button = QPushButton("Remove selected")
+        self.remove_sample_button.setEnabled(False)
+        self.remove_sample_button.clicked.connect(self._remove_sample)
+        self.sample_list.currentRowChanged.connect(lambda row: self.remove_sample_button.setEnabled(row >= 0))
+        sample_buttons.addWidget(add_sample_button)
+        sample_buttons.addWidget(self.remove_sample_button)
+        sample_layout.addLayout(sample_buttons)
+        self.form.addRow("Style samples", samples)
 
         self._section("Budget")
         budget = QDoubleSpinBox()

@@ -196,6 +196,30 @@ and plans exactly one AI opener before generating it. Existing section slots and
 The opener plan is checkpointed before painting; further requests reuse it and add another candidate.
 The opener remains subject to the normal image approval step.
 
+### Book-wide visual style
+
+Profile → Images has multiline **Book-wide image instructions** (the existing `image_style` field) and
+**Add style samples…**. Up to three samples are copied as PNGs, bounded to 1024 pixels, into
+`style/references/`; names and relative paths live in `style/references.json`. Originals are preserved.
+Samples save immediately and survive profile regeneration. Adding/removing samples does not overwrite
+unsaved form edits. Written instructions use the usual Save/Approve profile workflow.
+
+Every future AI chapter/section/opener image and cover-art request attaches these same samples as
+multimodal `image_url` data URLs, along with instructions to follow palette, lighting, texture, linework
+and realism while illustrating the new subject. Cover requests also receive the current written style
+directly, even when a concept was planned earlier. Existing images are unchanged; regenerate to use new
+settings. Visual consistency is guided by the selected model, not guaranteed pixel-for-pixel.
+
+References are sent to OpenRouter and the selected image provider during generation, as disclosed in the
+Profile controls. The selected model must accept image inputs as well as generate images. Requests never
+silently discard references. Missing files fail with an instruction to remove or re-add the sample.
+The gateway retains references for automatic retries and failure-panel retries without logging their
+base64 content. Storage for style samples is separate from chapter candidates, so rejecting an image
+does not remove the book's style samples.
+
+Transport follows [OpenRouter image-input documentation](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding).
+Live smoke test with the configured test image model and a synthetic sample succeeded at $0.0339005.
+
 Rejecting a candidate immediately hides its card and deletes its managed preview and, if selected, its
 approved copy. Uploaded originals outside the book are preserved. The manifest retains rejected metadata
 so later searches do not download that same URL again. Deletion is restricted to the book's `images` folder.

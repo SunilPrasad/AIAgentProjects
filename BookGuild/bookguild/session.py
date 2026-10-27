@@ -502,6 +502,30 @@ class BookSession:
 
     # ---------- Stage 5: images ----------
 
+    def add_style_samples(self, paths: list[Path]) -> None:
+        from bookguild.image_style import add_reference
+
+        if self._refuse_if_busy():
+            return
+        for path in paths:
+            try:
+                add_reference(self.book, path)
+            except (LLMError, OSError) as error:
+                self.reply(str(error))
+                break
+        self.bus.style_samples_changed.emit()
+
+    def remove_style_sample(self, relative: str) -> None:
+        from bookguild.image_style import remove_reference
+
+        if self._refuse_if_busy():
+            return
+        try:
+            remove_reference(self.book, relative)
+        except (LLMError, OSError) as error:
+            self.reply(str(error))
+        self.bus.style_samples_changed.emit()
+
     def image_slots(self) -> list[ImageSlot]:
         return load_slots(self.book)
 

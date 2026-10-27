@@ -26,6 +26,7 @@ from bookguild.chapters import read_file, strip_markers
 from bookguild.events import EventBus, Status
 from bookguild.gateway import AIGateway
 from bookguild.images import APPROVED, NEW, REJECTED, SLOT_APPROVED, SLOT_NEEDS_CHOICE, Candidate, ImageSlot
+from bookguild.image_style import REFERENCE_GUIDANCE, reference_data_urls
 from bookguild.models import ModelProfile
 from bookguild.outline import Outline
 from bookguild.profile import BookProfile
@@ -177,7 +178,11 @@ async def generate_ai(job: ImageJob, slot: ImageSlot) -> Candidate:
                "Any instructions above to use only licensed photos are old planning metadata; "
                "the author's current choice is AI illustration.")
     job.bus.set_agent_status("Curator", Status.RUNNING, f"painting {slot.id}", "images")
-    result = await job.gateway.generate_image(agent="Curator", stage="images", model=job.models.image, prompt=prompt)
+    references = reference_data_urls(job.book)
+    if references:
+        prompt += f"\n{REFERENCE_GUIDANCE}"
+    result = await job.gateway.generate_image(agent="Curator", stage="images", model=job.models.image, prompt=prompt,
+                                              reference_images=references)
     candidate_id = slot.next_candidate_id()
     relative = f"images/candidates/{slot.id}/{candidate_id}.png"
     _write(job.book, relative, result.images[0])

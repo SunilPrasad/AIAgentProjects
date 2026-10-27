@@ -72,9 +72,15 @@ async def propose(job: CoverJob, spec: CoverSpec) -> CoverSpec:
 
 
 async def paint(job: CoverJob, concept: CoverConcept) -> None:
+    from bookguild.image_style import REFERENCE_GUIDANCE, reference_data_urls
+
+    references = reference_data_urls(job.book)
+    prompt = f"{concept.art_prompt}\nBook-wide image instructions: {job.profile.image_style}\n{ART_RULES}"
+    if references:
+        prompt += f"\n{REFERENCE_GUIDANCE}"
     result = await job.gateway.generate_image(agent="Illuminator", stage="cover", model=job.models.cover_image,
-                                              prompt=f"{concept.art_prompt}\n{ART_RULES}", aspect_ratio="2:3",
-                                              size="2K")
+                                              prompt=prompt, aspect_ratio="2:3", size="2K",
+                                              reference_images=references)
     relative = f"cover/concepts/{concept.id}.png"
     path = job.book.folder / relative
     path.parent.mkdir(parents=True, exist_ok=True)

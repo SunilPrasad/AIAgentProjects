@@ -76,7 +76,8 @@ class OpenRouterClient:
             raise error
         return result
 
-    async def generate_image(self, model: str, prompt: str, aspect_ratio: str = "", size: str = "") -> LLMResult:
+    async def generate_image(self, model: str, prompt: str, aspect_ratio: str = "", size: str = "",
+                             reference_images: list[str] | None = None) -> LLMResult:
         """aspect_ratio e.g. "2:3" (portrait cover); size e.g. "2K" (only some models support it)."""
         payload = {
             "model": model,
@@ -85,6 +86,10 @@ class OpenRouterClient:
             "usage": {"include": True},
         }
         config = {k: v for k, v in (("aspect_ratio", aspect_ratio), ("image_size", size)) if v}
+        if reference_images:
+            payload["messages"][0]["content"] = [{"type": "text", "text": prompt}] + [
+                {"type": "image_url", "image_url": {"url": url}} for url in reference_images
+            ]
         if config:
             payload["image_config"] = config
         result = _parse_completion(await self._post("/chat/completions", payload), model)

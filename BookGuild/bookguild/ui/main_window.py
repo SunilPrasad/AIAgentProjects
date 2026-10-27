@@ -272,6 +272,8 @@ class MainWindow(QMainWindow):
         self.profile_view.generate_requested.connect(self._generate_profile)
         self.profile_view.save_requested.connect(lambda p: self.session and self.session.save_profile(p))
         self.profile_view.approve_requested.connect(self._approve_profile)
+        self.profile_view.style_samples_added.connect(lambda paths: self.session and self.session.add_style_samples(paths))
+        self.profile_view.style_sample_removed.connect(lambda path: self.session and self.session.remove_style_sample(path))
         self.stage_tabs.addTab(self.profile_view, "Profile")
         self.research_view = ResearchView()
         self.research_view.run_requested.connect(self._run_research)
@@ -401,6 +403,7 @@ class MainWindow(QMainWindow):
         self.bus.outline_changed.connect(self._refresh_outline)
         self.bus.chapters_changed.connect(lambda _number: self._refresh_chapters())
         self.bus.images_changed.connect(self._refresh_images)
+        self.bus.style_samples_changed.connect(self._refresh_style_samples)
         self.bus.cover_changed.connect(self._refresh_cover)
 
     # ---------- books ----------
@@ -438,6 +441,7 @@ class MainWindow(QMainWindow):
         self.brief_view.setPlainText(storage.read_brief(book))
         self.save_brief_button.setEnabled(False)
         self.profile_view.set_profile(load_profile(book), book.stages["profile"])
+        self._refresh_style_samples()
         self._refresh_research()
         self._refresh_outline(switch_tab=False)
         self._refresh_chapters()
@@ -573,9 +577,17 @@ class MainWindow(QMainWindow):
         if self.book is None:
             return
         self.profile_view.set_profile(profile, self.book.stages["profile"])
+        self._refresh_style_samples()
+        self._refresh_images()
         self.stage_tabs.setCurrentWidget(self.profile_view)
         self._show_book_title()
         self.refresh_library()
+
+    def _refresh_style_samples(self) -> None:
+        from bookguild.image_style import load_references
+
+        if self.book:
+            self.profile_view.set_style_samples(load_references(self.book), self.book.folder)
 
     def reset_view(self) -> None:
         """Show the saved state of the open book (undoes anything the demo drew)."""
