@@ -8,7 +8,7 @@
 
 Rules the code enforces (not just the prompt):
   - real people/places/objects (`real_subject`) get licensed images only, never AI
-  - image_strategy "licensed_web" never generates AI images; "ai_generated" never searches
+  - image_strategy "licensed_web" never generates AI images; "ai_generated" searches only for real subjects
   - every AI prompt forbids text, letters, logos and brand names (an early test image
     painted a trademarked brand name on a toy box)
 """
@@ -34,8 +34,8 @@ from bookguild.research.image_search import ImageHit, ImageSearch
 from bookguild.stages.research import book_summary
 from bookguild.storage import Book
 
-CHAPTER_CHARS = 12_000
-CANDIDATES_PER_SLOT = 4
+RESULTS_PER_QUERY = 3  # from each search phrase…
+MAX_NEW_CANDIDATES = 9  # …pooled, up to this many new candidates per search round
 AI_RULES = ("Rules: no text, letters, numbers, captions, logos, labels or brand names anywhere in the image. "
             "Do not depict any recognisable real person. Suitable for a children's book.")
 
@@ -63,21 +63,26 @@ def policy_text(strategy: str) -> str:
 # ---------- planning ----------
 
 async def plan_chapter(job: ImageJob, number: int, count: int) -> list[ImageSlot]:
-    chapter = strip_markers(read_file(job.book, number, "final.md"))[:CHAPTER_CHARS]
+    """Plan the chapter's images: always ONE chapter-opener image (chosen with the whole chapter in
+    mind), then up to `count` - 1 section images, only where a picture really helps."""
+    chapter = strip_markers(read_file(job.book, number, "final.md"))
     if not chapter:
         return []
     prompt = prompts.render("curator", book_summary=book_summary(job.profile), audience_age=job.profile.audience_age,
                             image_style=job.profile.image_style or "the book's style",
-                            policy=policy_text(job.profile.image_strategy), count=str(count), number=str(number),
+                            policy=policy_text(job.profile.image_strategy), extra=str(max(0, count - 1)),
+                            number=str(number),
                             title=job.outline.chapters[number - 1].title, chapter=chapter)
     result = await job.gateway.chat_json(agent="Curator", stage="images", model=job.models.default,
                                          fallback_model=job.models.fallback, max_tokens=3000, thinking="off",
                                          messages=[{"role": "user", "content": prompt}], required_keys=("images",),
                                          validate=_images_list)
+    planned = [raw for raw in result.data["images"] if isinstance(raw, dict) and _text(raw.get("purpose"))]
+    openers = [raw for raw in planned if raw.get("role") == "chapter"]
+    opener = openers[0] if openers else (planned[0] if planned else None)  # exactly one opener, first
+    planned = ([opener] if opener else []) + [raw for raw in planned if raw is not opener][:max(0, count - 1)]
     slots = []
-    for i, raw in enumerate(result.data["images"][:count], start=1):
-        if not isinstance(raw, dict) or not str(raw.get("purpose", "")).strip():
-            continue
+    for i, raw in enumerate(planned, start=1):
         real = bool(raw.get("real_subject")) or depicts_named_person(
             f"{raw.get('purpose', '')} {raw.get('ai_prompt') or ''}", chapter)
         source = "ai" if str(raw.get("source")) == "ai" else "licensed"
@@ -86,36 +91,52 @@ async def plan_chapter(job: ImageJob, number: int, count: int) -> list[ImageSlot
         elif job.profile.image_strategy == "ai_generated":
             source = "ai"
         purpose = str(raw["purpose"]).strip()
+        raw_queries = raw.get("search_queries") or []
+        if isinstance(raw_queries, str):
+            raw_queries = [raw_queries]
+        queries = [_text(q) for q in raw_queries if isinstance(q, str) and _text(q)]
+        queries = queries or [_text(raw.get("search_query")) or purpose[:60]]
         slots.append(ImageSlot(id=f"ch{number:02d}-{i}", chapter=number, purpose=purpose,
                                caption=_text(raw.get("caption")), anchor=_text(raw.get("anchor")),
-                               source=source, real_subject=real,
-                               search_query=_text(raw.get("search_query")) or purpose[:60],
+                               source=source, real_subject=real, role="chapter" if raw is opener else "section",
+                               search_queries=list(dict.fromkeys(queries))[:5],
                                ai_prompt=_text(raw.get("ai_prompt")) or purpose))
     return slots
 
 
 # ---------- candidates ----------
 
-async def find_licensed(job: ImageJob, slot: ImageSlot) -> int:
-    """Add licensed candidates to the slot (skipping files it already has). Returns how many were added."""
+async def find_licensed(job: ImageJob, slot: ImageSlot, queries: list[str] | None = None) -> int:
+    """Search every phrase (specific → wider) and pool the results, so there is a real choice.
+    Skips files the slot already has. Returns how many candidates were added."""
     known = {c.full_url for c in slot.candidates}
     added = 0
-    for provider in job.search.providers():
-        try:
-            hits = await search_with_shorter_query(job, provider, slot.search_query)
-        except LLMError as error:
-            job.bus.log(f"{provider} search failed for {slot.id}: {error.message}", "warning", "images", "Curator")
-            continue
-        for hit in hits:
-            if hit.full_url in known:
-                continue
+    pooled = []
+    for query in queries or slot.queries():
+        for provider in job.search.providers():
             try:
-                await add_hit(job, slot, hit)
+                hits = await search_with_shorter_query(job, provider, query)
             except LLMError as error:
-                job.bus.log(f"Skipped a {provider} image ({error.message})", "warning", "images", "Curator")
+                job.bus.log(f"{provider} search '{query}' failed for {slot.id}: {error.message}", "warning",
+                            "images", "Curator")
                 continue
-            known.add(hit.full_url)
-            added += 1
+            pooled.append((query, hits[:RESULTS_PER_QUERY]))
+    # Round-robin across phrases/providers so broad searches remain represented.
+    for index in range(RESULTS_PER_QUERY):
+        for query, hits in pooled:
+            for hit in hits[index:index + 1]:
+                if hit.full_url in known or added >= MAX_NEW_CANDIDATES:
+                    continue
+                try:
+                    await add_hit(job, slot, hit, query)
+                except LLMError as error:
+                    job.bus.log(f"Skipped a {provider} image ({error.message})", "warning", "images", "Curator")
+                    continue
+                known.add(hit.full_url)
+                added += 1
+    if not added:
+        job.bus.log(f"{slot.id}: no new licensed images for {', '.join(queries or slot.queries())}", stage="images",
+                    agent="Curator")
     return added
 
 
@@ -125,24 +146,24 @@ async def search_with_shorter_query(job: ImageJob, provider: str, query: str) ->
     def on_retry(error, attempt, delay):
         job.bus.log(f"{error.message} - retry {attempt}", "warning", "images", "Curator")
 
-    hits = await with_retries(lambda: job.search.search(provider, query, CANDIDATES_PER_SLOT), job.policy,
+    hits = await with_retries(lambda: job.search.search(provider, query, RESULTS_PER_QUERY), job.policy,
                               asyncio.sleep, on_retry)
     names = " ".join(re.findall(r"\b[A-Z][\w.'-]+", query))
     if not hits and names and names != query:
         job.bus.log(f"No results for '{query}' - trying '{names}'", stage="images", agent="Curator")
-        hits = await with_retries(lambda: job.search.search(provider, names, CANDIDATES_PER_SLOT), job.policy,
+        hits = await with_retries(lambda: job.search.search(provider, names, RESULTS_PER_QUERY), job.policy,
                                   asyncio.sleep, on_retry)
     return hits
 
 
-async def add_hit(job: ImageJob, slot: ImageSlot, hit: ImageHit) -> Candidate:
+async def add_hit(job: ImageJob, slot: ImageSlot, hit: ImageHit, query: str = "") -> Candidate:
     candidate_id = slot.next_candidate_id()
     preview = await job.search.download(hit.preview_url)
     relative = f"images/candidates/{slot.id}/{candidate_id}{_extension(hit.preview_url)}"
     _write(job.book, relative, preview)
     candidate = Candidate(id=candidate_id, provider=hit.provider, title=hit.title, preview=relative,
                           full_url=hit.full_url, page_url=hit.page_url, author=hit.author, license=hit.license,
-                          license_url=hit.license_url, width=hit.width, height=hit.height)
+                          license_url=hit.license_url, width=hit.width, height=hit.height, found_by=query)
     slot.candidates.append(candidate)
     return candidate
 
@@ -169,7 +190,7 @@ async def generate_ai(job: ImageJob, slot: ImageSlot) -> Candidate:
 async def fill_slot(job: ImageJob, slot: ImageSlot) -> None:
     """First candidates for a new slot, following the book's image strategy."""
     strategy = job.profile.image_strategy
-    if slot.source == "licensed" and strategy != "ai_generated":
+    if slot.source == "licensed" and (strategy != "ai_generated" or slot.real_subject):
         await find_licensed(job, slot)
     if slot.source == "ai" or (strategy == "mixed" and not slot.candidates and not slot.real_subject):
         await generate_ai(job, slot)
@@ -267,3 +288,5 @@ def _text(value) -> str:
 def _images_list(data) -> None:
     if not isinstance(data.get("images"), list) or not data["images"]:
         raise TransientError("Curator reply had no images list")
+    if not any(isinstance(raw, dict) and _text(raw.get("purpose")) for raw in data["images"]):
+        raise TransientError("Curator reply had no usable image plans")

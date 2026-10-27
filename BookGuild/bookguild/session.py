@@ -544,9 +544,11 @@ class BookSession:
         self._finish_images_stage()
         return True
 
-    async def find_more_images(self, slot_id: str) -> bool:
-        return await self._slot_action(slot_id, "finding more images",
-                                       lambda job, slot: images_stage.find_licensed(job, slot))
+    async def find_more_images(self, slot_id: str, query: str = "") -> bool:
+        """Search again with the slot's phrases, or with your own words (`query`)."""
+        queries = [query.strip()] if query.strip() else None
+        return await self._slot_action(slot_id, f"searching for '{query}'" if queries else "finding more images",
+                                       lambda job, slot: images_stage.find_licensed(job, slot, queries))
 
     async def generate_image(self, slot_id: str) -> bool:
         return await self._slot_action(slot_id, "painting an AI image",
@@ -586,7 +588,7 @@ class BookSession:
             number += 1
             slot_id = f"ch{chapter:02d}-{number}"
         slots.append(ImageSlot(id=slot_id, chapter=chapter, purpose=purpose, caption=purpose,
-                               source="licensed" if real_subject else "ai", search_query=purpose[:60],
+                               source="licensed" if real_subject else "ai", search_queries=[purpose[:60]],
                                ai_prompt=purpose, real_subject=real_subject))
         slots.sort(key=lambda s: (s.chapter, s.id))
         save_slots(self.book, slots)

@@ -164,6 +164,26 @@ flowchart LR
 
 ## 7. Images (Phase 7)
 
+### Chapter-first planning
+
+The Curator receives the complete final chapter, with citation markers removed. For image-enabled chapters,
+`images_per_chapter` is a maximum: one chapter opener represents the whole chapter, followed by optional
+section images only where helpful. Zero images or strategy `none` disables planning. The first slot is
+normalised to the opener even when an older model reply omits roles. The Images table labels each slot's
+place as Chapter opener or Section.
+
+Plans request 3–4 search phrases from specific to broad. Every phrase is searched across enabled providers;
+results are pooled round-robin across searches, deduplicated by full-image URL, and capped at nine new
+candidates per round. Candidates record `found_by`, shown on their cards. “Search with my own words…”
+searches a custom phrase without replacing the saved plan. Real subjects always use licensed images,
+including in the `ai_generated` profile; they are never painted.
+
+`ImageSlot.role` and `search_queries`, and `Candidate.found_by`, persist in `images/manifest.json`.
+Older manifests retain their single `search_query` and default to section placement. Existing slots are
+preserved when planning again. To replan an old book, first back up its `images` folder, then remove only
+`images/manifest.json` and use “Find images for written chapters”. This resets the saved image choices;
+do not remove a manifest whose approvals you still need.
+
 ```mermaid
 flowchart LR
     C[written chapter] --> P[Curator plans slots<br/>purpose · caption · anchor · real_subject]

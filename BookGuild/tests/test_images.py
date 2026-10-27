@@ -252,7 +252,7 @@ def test_missing_search_query_falls_back_to_purpose(tmp_path):
                                                       "real_subject": False, "source": "ai"}]}), model=model)
     curator.chat = chat
     asyncio.run(session.plan_images())
-    assert load_slots(session.book)[0].search_query == "A generic 1920s street"
+    assert load_slots(session.book)[0].queries() == ["A generic 1920s street"]
 
 
 def test_named_person_safety_net():
@@ -264,3 +264,71 @@ def test_named_person_safety_net():
                                     chapter)
     assert not depicts_named_person("How light scatters in water", chapter)
     assert not depicts_named_person("A young man walking in a 1920s street", chapter)  # no named character
+
+
+def test_real_subjects_get_photos_even_in_ai_profile(tmp_path):
+    session, curator, _ = make_session(tmp_path, strategy="ai_generated")
+    assert asyncio.run(session.plan_images())
+    real, idea = load_slots(session.book)
+    assert real.source == "licensed" and real.candidates
+    assert all(c.provider == "commons" for c in real.candidates)
+    assert idea.source == "ai" and curator.images_painted == 1
+
+
+def test_opener_uses_full_chapter_and_sections_are_optional(tmp_path):
+    session, curator, _ = make_session(tmp_path)
+    ending = "The chapter ends with an explanation of cosmic rays."
+    write_file(session.book, 1, "final.md", "A chapter about science. " * 700 + ending)
+
+    async def chat(model, messages, **kwargs):
+        assert ending in messages[0]["content"]
+        return LLMResult(text=json.dumps({"images": [
+            {"purpose": "Cosmic ray diagram", "role": "chapter", "source": "ai",
+             "search_queries": ["cosmic rays", "particle detector", "cloud chamber"]}
+        ]}), model=model)
+
+    curator.chat = chat
+    assert asyncio.run(session.plan_images())
+    slots = load_slots(session.book)
+    assert len(slots) == 1 and slots[0].role == "chapter"
+
+
+def test_all_search_phrases_are_pooled_and_custom_search_is_saved(tmp_path):
+    from bookguild.images import ImageSlot, save_slots
+
+    class BroadSearch(FakeImageSearch):
+        def __init__(self):
+            super().__init__()
+            self.queries = []
+
+        async def search(self, provider, query, limit=4):
+            self.queries.append(query)
+            return [ImageHit("commons", query, f"https://c/{query}/{i}.jpg", f"https://c/{query}/{i}/full.jpg",
+                             "https://commons/example", "Author", "CC0", "https://license", 2400, 1600)
+                    for i in range(3)]
+
+    session, _, _ = make_session(tmp_path)
+    search = BroadSearch()
+    session.make_image_search = lambda: search
+    phrases = ["Bhabha", "Tata Institute", "cosmic rays", "Cavendish Laboratory"]
+    save_slots(session.book, [ImageSlot("ch01-1", 1, "Science", search_queries=phrases)])
+    assert asyncio.run(session.find_more_images("ch01-1"))
+    slot = load_slots(session.book)[0]
+    assert search.queries == phrases
+    assert len(slot.candidates) == 9
+    assert set(c.found_by for c in slot.candidates) == set(phrases)
+    assert asyncio.run(session.find_more_images("ch01-1", "cloud chamber"))
+    assert search.queries[-1] == "cloud chamber"
+    assert load_slots(session.book)[0].candidates[-1].found_by == "cloud chamber"
+    assert asyncio.run(session.find_more_images("ch01-1", "cloud chamber"))
+    assert len(load_slots(session.book)[0].candidates) == 12  # no duplicates
+
+
+def test_legacy_manifest_still_loads(tmp_path):
+    session, _, _ = make_session(tmp_path)
+    path = session.book.folder / "images/manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([{"id": "ch01-1", "chapter": 1, "purpose": "Science",
+                                 "search_query": "cosmic rays", "candidates": []}]))
+    slot = load_slots(session.book)[0]
+    assert slot.role == "section" and slot.queries() == ["cosmic rays"]
