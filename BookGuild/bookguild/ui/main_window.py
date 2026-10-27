@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
         self.images_view = ImagesView()
         view, run = self.images_view, self._session_call
         view.plan_requested.connect(lambda: run(lambda s: s.plan_images()))
+        view.chapter_image_requested.connect(lambda number: run(lambda s: s.generate_chapter_image(number)))
         view.find_more_requested.connect(lambda slot, query: run(lambda s: s.find_more_images(slot, query)))
         view.generate_requested.connect(lambda slot: run(lambda s: s.generate_image(slot)))
         view.approve_requested.connect(lambda slot, cid: run(lambda s: s.approve_image(slot, cid)))

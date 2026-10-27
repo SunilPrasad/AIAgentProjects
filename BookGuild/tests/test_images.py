@@ -438,3 +438,66 @@ def test_manual_generation_overrides_every_profile_for_real_subject(tmp_path, st
     assert asyncio.run(session.generate_image(slot_id)) is True
     assert curator.images_painted == 1
     assert load_slots(session.book)[0].candidates[-1].provider == "ai"
+
+
+def test_generate_whole_chapter_image_preserves_legacy_section_slots(tmp_path):
+    session, curator, _ = make_session(tmp_path)
+    asyncio.run(session.plan_images())
+    session.skip_image("ch01-2")
+    before = load_slots(session.book)
+    # Simulate the pre-opener manifests from existing books.
+    from bookguild.images import save_slots
+    for slot in before:
+        slot.role = "section"
+    save_slots(session.book, before)
+    ending = "The chapter ends by connecting all these discoveries."
+    write_file(session.book, 1, "final.md", "Science and discovery. " * 800 + ending)
+    calls = []
+
+    async def chat(model, messages, **kwargs):
+        calls.append(messages[0]["content"])
+        assert ending in messages[0]["content"]
+        return LLMResult(text=json.dumps({"images": [{"role": "chapter", "purpose": "Discoveries together",
+                           "real_subject": False, "source": "ai", "ai_prompt": "A scientific instrument"}]}),
+                         model=model)
+
+    curator.chat = chat
+    assert asyncio.run(session.generate_chapter_image(1))
+    slots = load_slots(session.book)
+    opener = next(s for s in slots if s.role == "chapter")
+    assert len(slots) == 3 and opener.id == "ch01-3"
+    assert opener.candidates[0].provider == "ai"
+    assert [s for s in slots if s.role == "section"] == before
+    assert asyncio.run(session.generate_chapter_image(1))
+    assert len(calls) == 1  # reuse the saved whole-chapter plan
+    assert len(load_slots(session.book)[0].candidates) == 2
+
+
+def test_chapter_image_requires_written_chapter_and_respects_busy(tmp_path):
+    session, curator, _ = make_session(tmp_path)
+    assert asyncio.run(session.generate_chapter_image(2)) is False
+    session.busy = "another paid step"
+    assert asyncio.run(session.generate_chapter_image(1)) is False
+    assert curator.images_painted == 0
+
+
+def test_chapter_image_button_emits_selected_chapter(tmp_path, monkeypatch):
+    from bookguild.images import ImageSlot
+    from bookguild.ui.images_view import ImagesView
+    from PySide6.QtWidgets import QInputDialog
+
+    view = ImagesView()
+    view.set_slots([ImageSlot("ch03-1", 3, "Science")], BookProfile(), tmp_path, Status.WAITING)
+    received = []
+    view.chapter_image_requested.connect(received.append)
+
+    def choose(*args):
+        assert args[3] == 3
+        return 3, True
+
+    monkeypatch.setattr(QInputDialog, "getInt", choose)
+    view.chapter_image_button.click()
+    assert received == [3]
+    view.set_status(Status.RUNNING)
+    assert not view.chapter_image_button.isEnabled()
+    view.close()

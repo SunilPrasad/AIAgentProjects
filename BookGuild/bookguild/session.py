@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Awaitable, Callable
 
 from bookguild import prompts, storage
@@ -543,6 +543,48 @@ class BookSession:
             await job.search.close()
         self._finish_images_stage()
         return True
+
+    async def generate_chapter_image(self, number: int) -> bool:
+        """Generate a whole-chapter opener, preserving existing section images and decisions."""
+        profile, outline = self.profile, self.outline
+        if (profile is None or outline is None or not 1 <= number <= len(outline.chapters) or
+                not any(r.number == number and r.status == Status.DONE for r in self.chapter_records())):
+            self.reply("Write that chapter first, then generate its chapter image.")
+            return False
+        if self._refuse_if_busy():
+            return False
+        self.busy = f"the Curator is generating chapter {number}'s opener"
+        self.set_stage("images", Status.RUNNING)
+        job = self._image_job()
+        # This is an explicit AI request, independent of the automatic image policy.
+        job.profile = replace(profile, image_strategy="ai_generated")
+        slots = self.image_slots()
+        try:
+            opener = next((s for s in slots if s.chapter == number and s.role == "chapter"), None)
+            if opener is None:
+                planned = await images_stage.plan_chapter(job, number, 1)
+                if not planned:
+                    self.reply("That chapter has no final text to illustrate.")
+                    return False
+                opener = planned[0]
+                index = 1
+                while any(s.id == f"ch{number:02d}-{index}" for s in slots):
+                    index += 1
+                opener.id = f"ch{number:02d}-{index}"
+                slots.append(opener)
+                slots.sort(key=lambda s: (s.chapter, s.role != "chapter", s.id))
+                save_slots(self.book, slots)  # retry generation without paying to plan again
+                self.bus.images_changed.emit()
+            ok = await self._image_step(job, opener, images_stage.generate_ai(job, opener))
+            save_slots(self.book, slots)
+            return ok
+        except LLMError as error:
+            self.reply(f"Could not plan the chapter image: {error.message}")
+            return False
+        finally:
+            self.busy = None
+            await job.search.close()
+            self._finish_images_stage()
 
     async def find_more_images(self, slot_id: str, query: str = "") -> bool:
         """Search again with the slot's phrases, or with your own words (`query`)."""

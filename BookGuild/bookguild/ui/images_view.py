@@ -99,6 +99,7 @@ class CandidateCard(QFrame):
 
 class ImagesView(QWidget):
     plan_requested = Signal()
+    chapter_image_requested = Signal(int)
     add_slot_requested = Signal(int, str, bool)  # chapter, purpose, real subject
     find_more_requested = Signal(str, str)  # slot id, your own search words ("" = the slot's phrases)
     generate_requested = Signal(str)
@@ -118,6 +119,9 @@ class ImagesView(QWidget):
         self.status_label.setWordWrap(True)
         self.plan_button = QPushButton("Find images for written chapters")
         self.plan_button.clicked.connect(self.plan_requested)
+        self.chapter_image_button = QPushButton("Generate chapter image…")
+        self.chapter_image_button.setToolTip("Read a whole written chapter and generate its opener illustration")
+        self.chapter_image_button.clicked.connect(self._ask_chapter_image)
         add_button = QPushButton("Add image slot…")
         add_button.clicked.connect(self._ask_new_slot)
         credits_button = QPushButton("Credits")
@@ -126,7 +130,7 @@ class ImagesView(QWidget):
             QUrl.fromLocalFile(str(self.book_folder / "images" / "credits.md"))))
         top = QHBoxLayout()
         top.addWidget(self.status_label, stretch=1)
-        for button in (self.plan_button, add_button, credits_button):
+        for button in (self.plan_button, self.chapter_image_button, add_button, credits_button):
             top.addWidget(button)
 
         self.table = QTableWidget(0, len(COLUMNS))
@@ -221,6 +225,7 @@ class ImagesView(QWidget):
         self.status_label.setStyleSheet(f"color: {color};")
         busy = self.busy = status == Status.RUNNING
         self.plan_button.setEnabled(not busy)
+        self.chapter_image_button.setEnabled(not busy and self.profile is not None)
         for button in self.slot_buttons.values():
             button.setEnabled(not busy and self.selected_slot() is not None)
         self._update_slot_buttons()
@@ -278,6 +283,14 @@ class ImagesView(QWidget):
         self.cards.setColumnStretch(2, 1)
 
     # ---------- actions ----------
+
+    def _ask_chapter_image(self) -> None:
+        slot = self.selected_slot()
+        chapter, ok = QInputDialog.getInt(self, "Generate chapter image",
+                                         "Chapter number (uses the whole chapter):",
+                                         slot.chapter if slot else 1, 1, 60)
+        if ok:
+            self.chapter_image_requested.emit(chapter)
 
     def _slot_button(self, key: str) -> None:
         slot = self.selected_slot()

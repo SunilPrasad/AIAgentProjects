@@ -190,6 +190,12 @@ The profile controls automatic source selection and search availability. Manual 
 always enabled for a selected slot while idle, for every profile and for real subjects too. This explicit
 request overrides the automatic source policy. Search is disabled for AI-only and no-images profiles.
 
+“Generate chapter image…” asks for a written chapter number and generates a whole-chapter opener directly.
+If no opener exists (including older section-only manifests), the Curator reads the entire final chapter
+and plans exactly one AI opener before generating it. Existing section slots and decisions are preserved.
+The opener plan is checkpointed before painting; further requests reuse it and add another candidate.
+The opener remains subject to the normal image approval step.
+
 Rejecting a candidate immediately hides its card and deletes its managed preview and, if selected, its
 approved copy. Uploaded originals outside the book are preserved. The manifest retains rejected metadata
 so later searches do not download that same URL again. Deletion is restricted to the book's `images` folder.
