@@ -33,7 +33,7 @@ def role_rows(profile: ModelProfile) -> list[tuple[str, str]]:
     rows += [(f"scribes.{i}", f"Scribe-{i + 1} / Architect-{i + 1}") for i in range(len(profile.scribes))]
     rows += [(f"jurors.{i}", f"Juror-{i + 1}") for i in range(len(profile.jurors))]
     rows += [("chair", "Council Chair"), ("archivist", "Archivist"), ("image", "Image generation"),
-             ("cover_image", "Cover art (2K)"), ("fallback", "Fallback")]
+             ("cover_image", "Cover art (2K)"), ("image_reviewer", "Image Reviewer (vision model)"), ("fallback", "Fallback")]
     return rows
 
 

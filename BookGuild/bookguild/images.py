@@ -43,6 +43,12 @@ class Candidate:
     ai_model: str = ""
     prompt: str = ""
     status: str = NEW  # new / approved / rejected
+    found_by: str = ""  # the search words that found it (licensed images)
+    review_score: int | None = None
+    review_feedback: str = ""
+    review_state: str = ""  # legacy/unreviewed, pending, accepted, needs improvement, error
+    review_iteration: int = 0
+    review_model: str = ""
 
 
 @dataclass
@@ -53,7 +59,9 @@ class ImageSlot:
     caption: str = ""
     anchor: str = ""  # short quote from the chapter the image belongs next to
     source: str = "licensed"  # "licensed" or "ai" - the Curator's plan
-    search_query: str = ""
+    search_query: str = ""  # older books: a single search; new plans use search_queries
+    role: str = "section"  # "chapter" = the chapter-opener image, "section" = an image inside the chapter
+    search_queries: list[str] = field(default_factory=list)  # specific → wider
     ai_prompt: str = ""
     real_subject: bool = False  # shows a real person/place/object → licensed images only
     status: str = SLOT_NEEDS_CHOICE
@@ -66,6 +74,9 @@ class ImageSlot:
 
     def next_candidate_id(self) -> str:
         return f"c{len(self.candidates) + 1}"
+
+    def queries(self) -> list[str]:
+        return self.search_queries or ([self.search_query] if self.search_query else [self.purpose[:60]])
 
 
 def load_slots(book: Book) -> list[ImageSlot]:

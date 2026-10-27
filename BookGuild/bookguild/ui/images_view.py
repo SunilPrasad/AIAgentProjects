@@ -37,7 +37,7 @@ from bookguild.images import APPROVED, REJECTED, SLOT_APPROVED, SLOT_SKIPPED, Ca
 from bookguild.profile import BookProfile
 from bookguild.ui.theme import MUTED, STATUS_COLORS
 
-COLUMNS = ("Slot", "What it shows", "Kind", "Status")
+COLUMNS = ("Slot", "Place", "What it shows", "Kind", "Status")
 THUMB_WIDTH = 260
 SLOT_COLORS = {SLOT_APPROVED: STATUS_COLORS[Status.DONE], SLOT_SKIPPED: MUTED}
 
@@ -68,8 +68,15 @@ class CandidateCard(QFrame):
         info = QLabel(
             f"<b>{escape(candidate.title[:70])}</b><br>"
             f"{escape(candidate.provider)} · {escape(candidate.license)}{link}<br>"
+            + (f"<span style='color:{MUTED}'>found by: “{escape(candidate.found_by)}”</span><br>"
+               if candidate.found_by else "") +
             f"<span style='color:{MUTED}'>by {escape(candidate.author[:60] or '-')}</span><br>"
             f"{candidate.width}×{candidate.height}px · <span style='color:{dpi_color}'>{dpi} dpi - {verdict}</span>"
+            + (f"<br><b>Reviewer: {candidate.review_score}/100 · {escape(candidate.review_state)}</b>"
+               f"<br>Attempt {candidate.review_iteration}: {escape(candidate.review_feedback)}"
+               if candidate.review_score is not None else
+               f"<br>Review: {escape(candidate.review_state)} {escape(candidate.review_feedback)}"
+               if candidate.review_state else "")
             + (f"<br><b style='color:{STATUS_COLORS[Status.DONE]}'>✓ approved</b>" if candidate.status == APPROVED
                else "<br><span style='color:#8a8a8a'>rejected</span>" if candidate.status == REJECTED else ""))
         info.setWordWrap(True)
@@ -78,7 +85,7 @@ class CandidateCard(QFrame):
         info.setFixedWidth(THUMB_WIDTH)
 
         approve = QPushButton("Approve ✓")
-        approve.setEnabled(candidate.status != APPROVED)
+        approve.setEnabled(candidate.status != APPROVED and candidate.review_state in ("", "accepted"))
         approve.clicked.connect(lambda: view.approve_requested.emit(slot.id, candidate.id))
         reject = QPushButton("Reject")
         reject.setEnabled(candidate.status != REJECTED)
@@ -97,8 +104,9 @@ class CandidateCard(QFrame):
 
 class ImagesView(QWidget):
     plan_requested = Signal()
+    chapter_image_requested = Signal(int)
     add_slot_requested = Signal(int, str, bool)  # chapter, purpose, real subject
-    find_more_requested = Signal(str)  # slot id
+    find_more_requested = Signal(str, str)  # slot id, your own search words ("" = the slot's phrases)
     generate_requested = Signal(str)
     upload_requested = Signal(str, Path)
     skip_requested = Signal(str)
@@ -110,11 +118,15 @@ class ImagesView(QWidget):
         self.slots: list[ImageSlot] = []
         self.profile: BookProfile | None = None
         self.book_folder = Path(".")
+        self.busy = False
 
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
         self.plan_button = QPushButton("Find images for written chapters")
         self.plan_button.clicked.connect(self.plan_requested)
+        self.chapter_image_button = QPushButton("Generate chapter image…")
+        self.chapter_image_button.setToolTip("Read a whole written chapter and generate its opener illustration")
+        self.chapter_image_button.clicked.connect(self._ask_chapter_image)
         add_button = QPushButton("Add image slot…")
         add_button.clicked.connect(self._ask_new_slot)
         credits_button = QPushButton("Credits")
@@ -123,7 +135,7 @@ class ImagesView(QWidget):
             QUrl.fromLocalFile(str(self.book_folder / "images" / "credits.md"))))
         top = QHBoxLayout()
         top.addWidget(self.status_label, stretch=1)
-        for button in (self.plan_button, add_button, credits_button):
+        for button in (self.plan_button, self.chapter_image_button, add_button, credits_button):
             top.addWidget(button)
 
         self.table = QTableWidget(0, len(COLUMNS))
@@ -134,15 +146,17 @@ class ImagesView(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.currentCellChanged.connect(lambda *_: self.show_slot())
 
         self.slot_header = QLabel()
         self.slot_header.setWordWrap(True)
         self.slot_buttons: dict[str, QPushButton] = {}
         slot_row = QHBoxLayout()
-        for key, text, tip in (("find", "Find more licensed", "Search Wikimedia Commons (and Pexels/Pixabay) again"),
-                               ("ai", "Generate AI image", "Paint an illustration (about $0.03); not for real people"),
+        for key, text, tip in (("find", "Find more licensed", "Search all of this slot's phrases again"),
+                               ("own", "Search with my own words…", "Try a wider (or different) idea, e.g. "
+                                                                    "'cosmic rays' or 'Bombay 1930s'"),
+                               ("ai", "Generate AI image", "Paint an illustration using the profile's image style"),
                                ("upload", "Upload my own…", "Use your own image file; approved at once"),
                                ("skip", "Skip this slot", "Leave this place without an image")):
             button = QPushButton(text)
@@ -184,11 +198,15 @@ class ImagesView(QWidget):
         for slot in slots:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            kind = "real (licensed)" if slot.real_subject else slot.source
-            for column, value in enumerate((slot.id, slot.purpose, kind, slot.status)):
+            kind = "ai" if profile and profile.image_strategy == "ai_generated" else \
+                "real (licensed)" if slot.real_subject else slot.source
+            place = "Chapter opener" if slot.role == "chapter" else "Section"
+            for column, value in enumerate((slot.id, place, slot.purpose, kind, slot.status)):
                 item = QTableWidgetItem(value)
                 item.setToolTip(slot.caption or slot.purpose)
-                if column == 3:
+                if column == 1 and slot.role == "chapter":
+                    item.setFont(_bold(item.font()))
+                if column == 4:
                     item.setForeground(QColor(SLOT_COLORS.get(slot.status, STATUS_COLORS[Status.WAITING])))
                 self.table.setItem(row, column, item)
         if slots:
@@ -210,10 +228,22 @@ class ImagesView(QWidget):
             color = STATUS_COLORS[Status.WAITING]
         self.status_label.setText(f"<b>Images</b> - {escape(text)}")
         self.status_label.setStyleSheet(f"color: {color};")
-        busy = status == Status.RUNNING
+        busy = self.busy = status == Status.RUNNING
         self.plan_button.setEnabled(not busy)
+        self.chapter_image_button.setEnabled(not busy and self.profile is not None)
         for button in self.slot_buttons.values():
             button.setEnabled(not busy and self.selected_slot() is not None)
+        self._update_slot_buttons()
+
+    def _update_slot_buttons(self) -> None:
+        slot = self.selected_slot()
+        ready = slot is not None and not self.busy
+        strategy = self.profile.image_strategy if self.profile else "none"
+        search = ready and strategy in ("licensed_web", "mixed")
+        paint = ready
+        self.slot_buttons["find"].setEnabled(bool(search))
+        self.slot_buttons["own"].setEnabled(bool(search))
+        self.slot_buttons["ai"].setEnabled(bool(paint))
 
     def selected_slot_id(self) -> str | None:
         slot = self.selected_slot()
@@ -231,33 +261,53 @@ class ImagesView(QWidget):
 
     def show_slot(self) -> None:
         self._new_cards_area()
+        self._update_slot_buttons()
         slot = self.selected_slot()
         if slot is None:
             self.slot_header.setText("")
             return
-        real = " · <b>real subject: licensed images or your own only</b>" if slot.real_subject else ""
+        ai_only = self.profile and self.profile.image_strategy == "ai_generated"
+        real = " · <b>AI illustration (profile setting)</b>" if ai_only else \
+            " · <b>real subject: licensed photo planned; AI illustration also available</b>" if slot.real_subject else ""
+        place = "Chapter opener" if slot.role == "chapter" else "Section image"
         self.slot_header.setText(
-            f"<b>{escape(slot.id)}</b> - {escape(slot.purpose)}{real}<br>"
+            f"<b>{escape(slot.id)}</b> ({place}) - {escape(slot.purpose)}{real}<br>"
             f"<span style='color:{MUTED}'>Caption: {escape(slot.caption)}<br>"
-            f"Goes next to: “{escape(slot.anchor)}” · search: {escape(slot.search_query)}</span>")
-        self.slot_buttons["ai"].setEnabled(not slot.real_subject and self.slot_buttons["find"].isEnabled())
-        visible = sorted(slot.candidates, key=lambda c: (c.status == REJECTED, c.status != APPROVED))
+            f"Goes next to: “{escape(slot.anchor)}”<br>"
+            + ("AI generation uses your profile's image style.</span>" if ai_only else
+               f"Searches (specific → wider): {escape(' · '.join(slot.queries()))}</span>"))
+        visible = sorted((c for c in slot.candidates if c.status != REJECTED),
+                         key=lambda c: c.status != APPROVED)
         for i, candidate in enumerate(visible):
             self.cards.addWidget(CandidateCard(self, slot, candidate), i // 2, i % 2)
-        if not slot.candidates:
-            self.cards.addWidget(QLabel("No candidates - find more, generate one, or upload your own."), 0, 0)
+        if not visible:
+            self.cards.addWidget(QLabel("No candidates - generate an AI image or upload your own." if ai_only else
+                                       "No candidates - find more, generate one, or upload your own."), 0, 0)
         rows = (len(visible) + 1) // 2 or 1
         self.cards.setRowStretch(rows, 1)  # cards stay at the top-left; spare space goes below/right
         self.cards.setColumnStretch(2, 1)
 
     # ---------- actions ----------
 
+    def _ask_chapter_image(self) -> None:
+        slot = self.selected_slot()
+        chapter, ok = QInputDialog.getInt(self, "Generate chapter image",
+                                         "Chapter number (uses the whole chapter):",
+                                         slot.chapter if slot else 1, 1, 60)
+        if ok:
+            self.chapter_image_requested.emit(chapter)
+
     def _slot_button(self, key: str) -> None:
         slot = self.selected_slot()
         if slot is None:
             return
         if key == "find":
-            self.find_more_requested.emit(slot.id)
+            self.find_more_requested.emit(slot.id, "")
+        elif key == "own":
+            query, ok = QInputDialog.getText(self, f"Search for {slot.id}",
+                                             "Search Wikimedia Commons for (a person, place, object, idea or era):")
+            if ok and query.strip():
+                self.find_more_requested.emit(slot.id, query.strip())
         elif key == "ai":
             self.generate_requested.emit(slot.id)
         elif key == "skip":
@@ -277,6 +327,11 @@ class ImagesView(QWidget):
             return
         real = QMessageBox.question(self, "Add image slot",
                                     "Does it show a real person, place or historical object?\n"
-                                    "(Then only licensed images or your own upload are allowed.)") \
+                                    "(Mixed-source books use licensed photos for real subjects; AI-only books use illustrations.)") \
             == QMessageBox.StandardButton.Yes
         self.add_slot_requested.emit(chapter, purpose.strip(), real)
+
+
+def _bold(font):
+    font.setBold(True)
+    return font

@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Awaitable, Callable
 
 from bookguild import prompts, storage
@@ -502,6 +502,30 @@ class BookSession:
 
     # ---------- Stage 5: images ----------
 
+    def add_style_samples(self, paths: list[Path]) -> None:
+        from bookguild.image_style import add_reference
+
+        if self._refuse_if_busy():
+            return
+        for path in paths:
+            try:
+                add_reference(self.book, path)
+            except (LLMError, OSError) as error:
+                self.reply(str(error))
+                break
+        self.bus.style_samples_changed.emit()
+
+    def remove_style_sample(self, relative: str) -> None:
+        from bookguild.image_style import remove_reference
+
+        if self._refuse_if_busy():
+            return
+        try:
+            remove_reference(self.book, relative)
+        except (LLMError, OSError) as error:
+            self.reply(str(error))
+        self.bus.style_samples_changed.emit()
+
     def image_slots(self) -> list[ImageSlot]:
         return load_slots(self.book)
 
@@ -544,9 +568,57 @@ class BookSession:
         self._finish_images_stage()
         return True
 
-    async def find_more_images(self, slot_id: str) -> bool:
-        return await self._slot_action(slot_id, "finding more images",
-                                       lambda job, slot: images_stage.find_licensed(job, slot))
+    async def generate_chapter_image(self, number: int) -> bool:
+        """Generate a whole-chapter opener, preserving existing section images and decisions."""
+        profile, outline = self.profile, self.outline
+        if (profile is None or outline is None or not 1 <= number <= len(outline.chapters) or
+                not any(r.number == number and r.status == Status.DONE for r in self.chapter_records())):
+            self.reply("Write that chapter first, then generate its chapter image.")
+            return False
+        if self._refuse_if_busy():
+            return False
+        self.busy = f"the Curator is generating chapter {number}'s opener"
+        self.set_stage("images", Status.RUNNING)
+        job = self._image_job()
+        # This is an explicit AI request, independent of the automatic image policy.
+        job.profile = replace(profile, image_strategy="ai_generated")
+        job.gateway.step_retry = lambda: self.generate_chapter_image(number)
+        slots = self.image_slots()
+        try:
+            opener = next((s for s in slots if s.chapter == number and s.role == "chapter"), None)
+            if opener is None:
+                planned = await images_stage.plan_chapter(job, number, 1)
+                if not planned:
+                    self.reply("That chapter has no final text to illustrate.")
+                    return False
+                opener = planned[0]
+                index = 1
+                while any(s.id == f"ch{number:02d}-{index}" for s in slots):
+                    index += 1
+                opener.id = f"ch{number:02d}-{index}"
+                slots.append(opener)
+                slots.sort(key=lambda s: (s.chapter, s.role != "chapter", s.id))
+                save_slots(self.book, slots)  # retry generation without paying to plan again
+                self.bus.images_changed.emit()
+            ok = await self._image_step(job, opener, images_stage.generate_ai(job, opener))
+            save_slots(self.book, slots)
+            return ok
+        except LLMError as error:
+            self.reply(f"Could not plan the chapter image: {error.message}")
+            return False
+        finally:
+            self.busy = None
+            await job.search.close()
+            self._finish_images_stage()
+
+    async def find_more_images(self, slot_id: str, query: str = "") -> bool:
+        """Search again with the slot's phrases, or with your own words (`query`)."""
+        if self.profile and self.profile.image_strategy in ("none", "ai_generated"):
+            self.reply("The profile uses AI-generated images. Use Generate AI image for this slot.")
+            return False
+        queries = [query.strip()] if query.strip() else None
+        return await self._slot_action(slot_id, f"searching for '{query}'" if queries else "finding more images",
+                                       lambda job, slot: images_stage.find_licensed(job, slot, queries))
 
     async def generate_image(self, slot_id: str) -> bool:
         return await self._slot_action(slot_id, "painting an AI image",
@@ -557,7 +629,12 @@ class BookSession:
                                        lambda job, slot: images_stage.approve(job, slot, candidate_id))
 
     def reject_image(self, slot_id: str, candidate_id: str) -> None:
-        self._edit_slot(slot_id, lambda slot: images_stage.reject(slot, candidate_id))
+        if self._refuse_if_busy():
+            return
+        try:
+            self._edit_slot(slot_id, lambda slot: images_stage.reject(self.book, slot, candidate_id))
+        except OSError as error:
+            self.reply(f"Could not delete the rejected image: {error}")
 
     def skip_image(self, slot_id: str) -> str:
         def skip(slot: ImageSlot) -> None:
@@ -586,7 +663,7 @@ class BookSession:
             number += 1
             slot_id = f"ch{chapter:02d}-{number}"
         slots.append(ImageSlot(id=slot_id, chapter=chapter, purpose=purpose, caption=purpose,
-                               source="licensed" if real_subject else "ai", search_query=purpose[:60],
+                               source="licensed" if real_subject else "ai", search_queries=[purpose[:60]],
                                ai_prompt=purpose, real_subject=real_subject))
         slots.sort(key=lambda s: (s.chapter, s.id))
         save_slots(self.book, slots)
@@ -604,6 +681,7 @@ class BookSession:
         self.busy = f"the Curator is {doing}"
         job = self._image_job()
         try:
+            job.gateway.step_retry = lambda: self._slot_action(slot_id, doing, action)
             ok = await self._image_step(job, slot, action(job, slot))
         finally:
             self.busy = None
@@ -680,7 +758,8 @@ class BookSession:
         finally:
             self.busy = None
         if not spec.chosen:
-            first = next((c for c in spec.concepts if c.art_file), spec.concepts[0] if spec.concepts else None)
+            first = next((c for c in spec.concepts if c.art_file and
+                          (not c.reviews or (c.reviews[-1].get("score") or 0) > 70)), None)
             if first:
                 cover_stage.choose(spec, first.id)
         self._store_cover(spec)
@@ -692,6 +771,9 @@ class BookSession:
         spec = self.cover()
         if not any(c.id == concept_id for c in spec.concepts):
             return f"There is no cover concept {concept_id}."
+        concept = next(c for c in spec.concepts if c.id == concept_id)
+        if concept.reviews and (concept.reviews[-1].get("score") or 0) <= 70:
+            return "This cover image has not passed review (score must exceed 70)."
         cover_stage.choose(spec, concept_id)
         self._store_cover(spec)
         return f"Using cover concept {concept_id}."
@@ -725,6 +807,9 @@ class BookSession:
         missing = [name for name, value in (("title", spec.title), ("author", spec.author)) if not value.strip()]
         if missing:
             return f"The cover needs a {' and '.join(missing)} first."
+        selected = next((c for c in spec.concepts if c.art_file == spec.front_art), None)
+        if selected and selected.reviews and (selected.reviews[-1].get("score") or 0) <= 70:
+            return "This cover image has not passed review (score must exceed 70)."
         profile = self.profile or BookProfile()
         pages = self.cover_pages(spec)
         files = export_cover(self.book, spec, profile, pages)

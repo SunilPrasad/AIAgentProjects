@@ -50,6 +50,7 @@ class EventBus(QObject):
     outline_changed = Signal()  # proposals, verdict or the working outline changed
     chapters_changed = Signal(int)  # a chapter's record or files changed (its number)
     images_changed = Signal()  # image slots, candidates or decisions changed
+    style_samples_changed = Signal()  # book-wide reference images changed
     cover_changed = Signal()  # cover settings, concepts or approval changed
 
     def log(self, message: str, level: str = "info", stage: str = "", agent: str = "") -> None:

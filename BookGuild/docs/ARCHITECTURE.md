@@ -164,21 +164,112 @@ flowchart LR
 
 ## 7. Images (Phase 7)
 
+### Chapter-first planning
+
+The Curator receives the complete final chapter, with citation markers removed. For image-enabled chapters,
+`images_per_chapter` is a maximum: one chapter opener represents the whole chapter, followed by optional
+section images only where helpful. Zero images or strategy `none` disables planning. The first slot is
+normalised to the opener even when an older model reply omits roles. The Images table labels each slot's
+place as Chapter opener or Section.
+
+Plans request 3–4 search phrases from specific to broad. Every phrase is searched across enabled providers;
+results are pooled round-robin across searches, deduplicated by full-image URL, and capped at nine new
+candidates per round. Candidates record `found_by`, shown on their cards. “Search with my own words…”
+searches a custom phrase without replacing the saved plan. In mixed-source books real subjects use
+licensed images. The explicit `ai_generated` profile takes precedence and illustrates all subjects.
+
+`ImageSlot.role` and `search_queries`, and `Candidate.found_by`, persist in `images/manifest.json`.
+Older manifests retain their single `search_query` and default to section placement. Existing slots are
+preserved when planning again. To replan an old book, first back up its `images` folder, then remove only
+`images/manifest.json` and use “Find images for written chapters”. This resets the saved image choices;
+do not remove a manifest whose approvals you still need.
+
+Image actions follow the current profile even for older slots: `ai_generated` enables AI generation and
+disables both licensed-search buttons for every slot, including existing real-subject slots.
+The profile controls automatic source selection and search availability. Manual “Generate AI image” is
+always enabled for a selected slot while idle, for every profile and for real subjects too. This explicit
+request overrides the automatic source policy. Search is disabled for AI-only and no-images profiles.
+
+“Generate chapter image…” asks for a written chapter number and generates a whole-chapter opener directly.
+If no opener exists (including older section-only manifests), the Curator reads the entire final chapter
+and plans exactly one AI opener before generating it. Existing section slots and decisions are preserved.
+The opener plan is checkpointed before painting; further requests reuse it and add another candidate.
+The opener remains subject to the normal image approval step.
+
+### Book-wide visual style
+
+Profile → Images has multiline **Book-wide image instructions** (the existing `image_style` field) and
+**Add style samples…**. Up to three samples are copied as PNGs, bounded to 1024 pixels, into
+`style/references/`; names and relative paths live in `style/references.json`. Originals are preserved.
+Samples save immediately and survive profile regeneration. Adding/removing samples does not overwrite
+unsaved form edits. Written instructions use the usual Save/Approve profile workflow.
+
+Every future AI chapter/section/opener image and cover-art request attaches these same samples as
+multimodal `image_url` data URLs, along with instructions to follow palette, lighting, texture, linework
+and realism while illustrating the new subject. Cover requests also receive the current written style
+directly, even when a concept was planned earlier. Existing images are unchanged; regenerate to use new
+settings. Visual consistency is guided by the selected model, not guaranteed pixel-for-pixel.
+
+References are sent to OpenRouter and the selected image provider during generation, as disclosed in the
+Profile controls. The selected model must accept image inputs as well as generate images. Requests never
+silently discard references. Missing files fail with an instruction to remove or re-add the sample.
+The gateway retains references for automatic retries and failure-panel retries without logging their
+base64 content. Storage for style samples is separate from chapter candidates, so rejecting an image
+does not remove the book's style samples.
+
+Transport follows [OpenRouter image-input documentation](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding).
+Live smoke test with the configured test image model and a synthetic sample succeeded at $0.0339005.
+
+### Automatic image review and refinement
+
+Every newly AI-generated chapter image (including openers) and cover concept is visually reviewed by
+the **Image Reviewer**. `image_reviewer` is a configurable vision-model role in each model profile and
+AI → Models. Its prompt receives the actual image pixels, book-wide visual samples, written style,
+intended subject and chapter text (or book summary for covers). Licensed search results, uploaded images
+and older generated images are unchanged by this automatic generation workflow.
+
+The reviewer returns an integer score from 0–100 and concrete feedback, judged on relevance/accuracy,
+style consistency, composition and visual quality. **Strictly above 70 passes**. Passing chapter images
+are automatically approved and copied to `images/approved/`. Passing cover art becomes selectable;
+final cover export still needs the author and user approval. Scores of 0–70 trigger feedback-guided
+regeneration, with the original instructions and style samples retained. There are at most **three
+improvement generations after the initial image** (four images total). No pass means no automatic
+acceptance; all scored attempts remain visible with feedback, and the process stops.
+
+Candidate review score, feedback, reviewer model, iteration and state persist in the image manifest.
+Cover reviews persist with concepts in `cover/cover.json` and checkpoint in `cover/reviews/<id>.json`.
+The chapter workflow checkpoints each generated image before reviewing it; retrying a reviewer error
+reuses saved pixels instead of paying to paint again. A reviewer failure or budget/pause stop leaves
+the image unaccepted and never starts another improvement generation. Reviewer calls and generation
+calls use the normal gateway budget/retry/cost tracking. Gateway transport retries are distinct from the
+three improvement limit. Rejection still removes managed image files and hides the candidate.
+
+The UI displays scores and feedback for every attempt. Failed/unscored review attempts cannot be approved
+through the image or cover actions. The reviewer judges visual quality, not a guarantee of factual accuracy.
+Live vision smoke test on a synthetic geometric image returned 95/100 with specific edge-quality feedback
+at $0.00045 using the configured vision model.
+
+Rejecting a candidate immediately hides its card and deletes its managed preview and, if selected, its
+approved copy. Uploaded originals outside the book are preserved. The manifest retains rejected metadata
+so later searches do not download that same URL again. Deletion is restricted to the book's `images` folder.
+
 ```mermaid
 flowchart LR
     C[written chapter] --> P[Curator plans slots<br/>purpose · caption · anchor · real_subject]
-    P --> R{real person / place<br/>or licensed_web?}
+    P --> AI{AI-only profile?}
+    AI -- yes --> A[AI illustration<br/>no text/logos]
+    AI -- no --> R{real person / place<br/>or licensed_web?}
     R -- yes --> L[Wikimedia Commons<br/>+ Pexels/Pixabay with keys<br/>strict licence rules]
-    R -- no, mixed/ai --> A[AI illustration<br/>no text/logos/real people]
+    R -- no, mixed --> A
     L --> Y[you: approve · reject · upload own · skip]
     A --> Y
     Y --> F[images/approved/ at print size<br/>manifest.json · credits.md]
 ```
 
 - **Rules enforced in code, not only in prompts:**
-  - Real subjects only ever get licensed images.
-  - Strategy `licensed_web` never paints and `ai_generated` never searches.
-  - Every AI prompt bans text, logos, brand names and recognisable real people. An early test image painted a trademarked brand name on a toy box.
+  - Real subjects get licensed images in mixed-source books; AI-only profiles illustrate them.
+  - Automatic planning in `licensed_web` never paints and `ai_generated` never searches. Manual generation remains available in every profile.
+  - Every AI prompt bans text, logos and brand names and describes original illustrations rather than archival photographs.
   - `depicts_named_person` overrides the Curator when a description shows a main character of the chapter (a name that appears at least 3 times) together with person words. In testing, a cheap Curator marked "young Chandru Raman as a child" as an AI idea.
 - **Commons licence rules** (from the author's *Great Indians* project):
   - CC BY / CC BY-SA (country suffixes allowed) / CC0 / Public Domain only, never NC/ND/fair use.

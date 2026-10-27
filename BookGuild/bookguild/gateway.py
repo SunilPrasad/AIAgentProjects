@@ -110,15 +110,18 @@ class AIGateway:
         return await self._run(agent, stage, model, fallback_model, call, retry)
 
     async def generate_image(self, *, agent: str, stage: str, model: str, prompt: str, aspect_ratio: str = "",
-                             size: str = "") -> LLMResult:
+                             size: str = "", reference_images: list[str] | None = None) -> LLMResult:
         async def call(m: str) -> LLMResult:
+            if reference_images:
+                return await self.client.generate_image(m, prompt, aspect_ratio=aspect_ratio, size=size,
+                                                        reference_images=reference_images)
             if aspect_ratio or size:
                 return await self.client.generate_image(m, prompt, aspect_ratio=aspect_ratio, size=size)
             return await self.client.generate_image(m, prompt)
 
         async def retry() -> LLMResult:
             return await self.generate_image(agent=agent, stage=stage, model=model, prompt=prompt,
-                                             aspect_ratio=aspect_ratio, size=size)
+                                             aspect_ratio=aspect_ratio, size=size, reference_images=reference_images)
 
         return await self._run(agent, stage, model, None, call, retry)
 

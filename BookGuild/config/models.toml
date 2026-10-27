@@ -19,6 +19,7 @@
 #   (Wikipedia, OpenAlex and Crossref are free and always added for evidence books)
 
 [profiles.test]
+image_reviewer = "google/gemini-3.1-flash-lite" # vision review: score and feedback
 default   = "qwen/qwen3.7-flash"                        # 0.03 / 0.13
 scribes   = ["deepseek/deepseek-v4-flash", "qwen/qwen3.7-flash", "google/gemma-4-26b-a4b-it"]
 jurors    = ["openai/gpt-oss-20b", "mistralai/mistral-small-3.2-24b-instruct", "meta-llama/llama-3.3-70b-instruct"]
@@ -31,6 +32,7 @@ search          = "openrouter_exa"   # ~$0.007 per search, no extra key
 search_fallback = "duckduckgo"
 
 [profiles.balanced]
+image_reviewer = "google/gemini-3.1-flash-lite"
 default   = "qwen/qwen3.8-flash"
 scribes   = ["deepseek/deepseek-v4.1-flash", "qwen/qwen3.8-flash", "google/gemini-3.1-flash-lite"]
 jurors    = ["openai/gpt-6-luna", "mistralai/mistral-small-2603", "z-ai/glm-5.3-flash"]
@@ -43,6 +45,7 @@ search          = "openrouter_exa"
 search_fallback = "duckduckgo"
 
 [profiles.quality]
+image_reviewer = "google/gemini-3.1-flash-lite"
 default   = "qwen/qwen3.8-flash"
 scribes   = ["deepseek/deepseek-v4-pro", "qwen/qwen3.7-plus", "google/gemini-3.5-flash"]
 jurors    = ["openai/gpt-6.1-terra", "mistralai/mistral-large-2512", "moonshotai/kimi-k2.6"]

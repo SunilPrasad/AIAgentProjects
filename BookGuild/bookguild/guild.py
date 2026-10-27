@@ -25,6 +25,7 @@ GUILD: tuple[GuildGroup, ...] = (
     GuildGroup("Council", "Jury", ("Juror-1", "Juror-2", "Juror-3", "Chair")),
     GuildGroup("Archivist", "Fact-check", ("Archivist",)),
     GuildGroup("Curator", "Images", ("Curator",)),
+    GuildGroup("Image Reviewer", "Visual review", ("Image Reviewer",)),
     GuildGroup("Illuminator", "Cover", ("Illuminator",)),
     GuildGroup("Binder", "Layout & export", ("Binder",)),
 )
@@ -37,8 +38,8 @@ STAGE_AGENTS: dict[str, tuple[str, ...]] = {
     "outline": ("Architect-1", "Architect-2", "Architect-3", "Juror-1", "Juror-2", "Juror-3", "Chair"),
     "chapters": ("Scout-1", "Scout-2", "Scout-3", "Scribe-1", "Scribe-2", "Scribe-3",
                  "Juror-1", "Juror-2", "Juror-3", "Chair", "Archivist"),
-    "images": ("Curator",),
-    "cover": ("Illuminator",),
+    "images": ("Curator", "Image Reviewer"),
+    "cover": ("Illuminator", "Image Reviewer"),
     "export": ("Binder",),
 }
 

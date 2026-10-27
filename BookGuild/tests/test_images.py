@@ -92,6 +92,9 @@ class FakeCurator:
         self.images_painted = 0
 
     async def chat(self, model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Clear and consistent with the book style."}),
+                             model=model)
         return LLMResult(text=json.dumps({"images": [
             {"purpose": "Homi Bhabha as a young man", "caption": "Homi Bhabha", "anchor": "born in 1909",
              "real_subject": True, "source": "ai", "search_query": "Homi Bhabha", "ai_prompt": "a man"},
@@ -175,11 +178,11 @@ def test_approve_skip_and_credits(tmp_path):
     assert "Homi Bhabha photo 1" in credits
 
 
-def test_ai_is_refused_for_real_subjects(tmp_path):
+def test_manual_ai_generation_is_available_for_real_subjects(tmp_path):
     session, curator, _ = make_session(tmp_path)
     asyncio.run(session.plan_images())
-    assert asyncio.run(session.generate_image("ch01-1")) is False
-    assert curator.images_painted == 1  # only the idea slot's image
+    assert asyncio.run(session.generate_image("ch01-1")) is True
+    assert curator.images_painted == 2
 
 
 def test_licensed_only_books_never_paint(tmp_path):
@@ -248,11 +251,13 @@ def test_missing_search_query_falls_back_to_purpose(tmp_path):
     session, curator, _ = make_session(tmp_path)
 
     async def chat(model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good illustration."}), model=model)
         return LLMResult(text=json.dumps({"images": [{"purpose": "A generic 1920s street", "search_query": None,
                                                       "real_subject": False, "source": "ai"}]}), model=model)
     curator.chat = chat
     asyncio.run(session.plan_images())
-    assert load_slots(session.book)[0].search_query == "A generic 1920s street"
+    assert load_slots(session.book)[0].queries() == ["A generic 1920s street"]
 
 
 def test_named_person_safety_net():
@@ -264,3 +269,244 @@ def test_named_person_safety_net():
                                     chapter)
     assert not depicts_named_person("How light scatters in water", chapter)
     assert not depicts_named_person("A young man walking in a 1920s street", chapter)  # no named character
+
+
+def test_ai_profile_generates_for_real_subjects_too(tmp_path):
+    session, curator, _ = make_session(tmp_path, strategy="ai_generated")
+    assert asyncio.run(session.plan_images())
+    real, idea = load_slots(session.book)
+    assert real.source == "ai" and real.candidates
+    assert all(c.provider == "ai" for c in real.candidates)
+    assert idea.source == "ai" and curator.images_painted == 2
+
+
+def test_opener_uses_full_chapter_and_sections_are_optional(tmp_path):
+    session, curator, _ = make_session(tmp_path)
+    ending = "The chapter ends with an explanation of cosmic rays."
+    write_file(session.book, 1, "final.md", "A chapter about science. " * 700 + ending)
+
+    async def chat(model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good illustration."}), model=model)
+        assert ending in messages[0]["content"]
+        return LLMResult(text=json.dumps({"images": [
+            {"purpose": "Cosmic ray diagram", "role": "chapter", "source": "ai",
+             "search_queries": ["cosmic rays", "particle detector", "cloud chamber"]}
+        ]}), model=model)
+
+    curator.chat = chat
+    assert asyncio.run(session.plan_images())
+    slots = load_slots(session.book)
+    assert len(slots) == 1 and slots[0].role == "chapter"
+
+
+def test_all_search_phrases_are_pooled_and_custom_search_is_saved(tmp_path):
+    from bookguild.images import ImageSlot, save_slots
+
+    class BroadSearch(FakeImageSearch):
+        def __init__(self):
+            super().__init__()
+            self.queries = []
+
+        async def search(self, provider, query, limit=4):
+            self.queries.append(query)
+            return [ImageHit("commons", query, f"https://c/{query}/{i}.jpg", f"https://c/{query}/{i}/full.jpg",
+                             "https://commons/example", "Author", "CC0", "https://license", 2400, 1600)
+                    for i in range(3)]
+
+    session, _, _ = make_session(tmp_path)
+    search = BroadSearch()
+    session.make_image_search = lambda: search
+    phrases = ["Bhabha", "Tata Institute", "cosmic rays", "Cavendish Laboratory"]
+    save_slots(session.book, [ImageSlot("ch01-1", 1, "Science", search_queries=phrases)])
+    assert asyncio.run(session.find_more_images("ch01-1"))
+    slot = load_slots(session.book)[0]
+    assert search.queries == phrases
+    assert len(slot.candidates) == 9
+    assert set(c.found_by for c in slot.candidates) == set(phrases)
+    assert asyncio.run(session.find_more_images("ch01-1", "cloud chamber"))
+    assert search.queries[-1] == "cloud chamber"
+    assert load_slots(session.book)[0].candidates[-1].found_by == "cloud chamber"
+    assert asyncio.run(session.find_more_images("ch01-1", "cloud chamber"))
+    assert len(load_slots(session.book)[0].candidates) == 12  # no duplicates
+
+
+def test_legacy_manifest_still_loads(tmp_path):
+    session, _, _ = make_session(tmp_path)
+    path = session.book.folder / "images/manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([{"id": "ch01-1", "chapter": 1, "purpose": "Science",
+                                 "search_query": "cosmic rays", "candidates": []}]))
+    slot = load_slots(session.book)[0]
+    assert slot.role == "section" and slot.queries() == ["cosmic rays"]
+
+
+def test_reject_removes_preview_and_approved_copy(tmp_path):
+    from bookguild.images import REJECTED, SLOT_NEEDS_CHOICE
+
+    session, _, _ = make_session(tmp_path)
+    asyncio.run(session.plan_images())
+    asyncio.run(session.approve_image("ch01-1", "c1"))
+    before = load_slots(session.book)[0]
+    preview = session.book.folder / before.candidate("c1").preview
+    approved = session.book.folder / before.file
+    other = session.book.folder / before.candidate("c2").preview
+    session.reject_image("ch01-1", "c1")
+    slot = load_slots(session.book)[0]
+    assert not preview.exists() and not approved.exists() and other.exists()
+    assert slot.candidate("c1").status == REJECTED
+    assert slot.status == SLOT_NEEDS_CHOICE and not slot.chosen and not slot.file
+    session.reject_image("ch01-1", "c1")  # already removed is harmless
+
+
+def test_reject_upload_preserves_original_and_reject_cannot_escape_book(tmp_path):
+    from bookguild.images import save_slots
+
+    session, _, _ = make_session(tmp_path)
+    asyncio.run(session.plan_images())
+    original = tmp_path / "original.png"
+    original.write_bytes(png_bytes())
+    session.upload_image("ch01-1", original)
+    slot = load_slots(session.book)[0]
+    copied = session.book.folder / slot.file
+    session.reject_image(slot.id, slot.chosen)
+    assert original.exists() and not copied.exists()
+    slots = load_slots(session.book)
+    slots[0].candidates[0].preview = str(original.resolve())
+    save_slots(session.book, slots)
+    session.reject_image(slots[0].id, slots[0].candidates[0].id)
+    assert original.exists()
+
+
+@pytest.mark.parametrize("strategy,real,search,paint", [
+    ("ai_generated", False, False, True),
+    ("ai_generated", True, False, True),
+    ("licensed_web", False, True, True),
+    ("mixed", False, True, True),
+    ("mixed", True, True, True),
+    ("none", False, False, True),
+])
+def test_image_buttons_follow_profile_and_hide_rejected(tmp_path, strategy, real, search, paint):
+    from bookguild.images import ImageSlot, REJECTED
+    from bookguild.ui.images_view import ImagesView, CandidateCard
+
+    view = ImagesView()
+    # A stale slot source must not override the current profile.
+    slot = ImageSlot("ch01-1", 1, "Science", source="licensed", real_subject=real,
+                     candidates=[Candidate("c1", "ai", "Rejected", "missing.png", status=REJECTED)])
+    view.set_slots([slot], BookProfile(image_strategy=strategy), tmp_path, Status.WAITING)
+    assert view.slot_buttons["find"].isEnabled() == search
+    assert view.slot_buttons["own"].isEnabled() == search
+    assert view.slot_buttons["ai"].isEnabled() == paint
+    assert not view.cards_widget.findChildren(CandidateCard)
+    if strategy == "ai_generated":
+        assert view.table.item(0, 3).text() == "ai"
+        assert "licensed images or your own only" not in view.slot_header.text()
+    view.set_status(Status.RUNNING)
+    view.show_slot()
+    assert not any(view.slot_buttons[k].isEnabled() for k in ("find", "own", "ai"))
+    view.set_status(Status.WAITING)
+    assert view.slot_buttons["ai"].isEnabled() == paint
+    view.close()
+
+
+def test_session_actions_follow_profile(tmp_path):
+    session, curator, _ = make_session(tmp_path, strategy="ai_generated")
+    asyncio.run(session.plan_images())
+    assert asyncio.run(session.find_more_images("ch01-2")) is False
+    assert asyncio.run(session.generate_image("ch01-2")) is True
+    profile = session.profile
+    profile.image_strategy = "licensed_web"
+    save_profile(session.book, profile)
+    painted = curator.images_painted
+    assert asyncio.run(session.generate_image("ch01-2")) is True
+    assert curator.images_painted == painted + 1
+
+
+def test_ai_profile_overrides_existing_real_licensed_slot(tmp_path):
+    session, curator, _ = make_session(tmp_path, strategy="mixed")
+    asyncio.run(session.plan_images())
+    assert load_slots(session.book)[0].real_subject
+    assert load_slots(session.book)[0].source == "licensed"
+    profile = session.profile
+    profile.image_strategy = "ai_generated"
+    save_profile(session.book, profile)
+    painted = curator.images_painted
+    assert asyncio.run(session.find_more_images("ch01-1")) is False
+    assert asyncio.run(session.generate_image("ch01-1")) is True
+    assert curator.images_painted == painted + 1
+    assert load_slots(session.book)[0].candidates[-1].provider == "ai"
+
+
+@pytest.mark.parametrize("strategy", ["ai_generated", "licensed_web", "mixed", "none"])
+def test_manual_generation_overrides_every_profile_for_real_subject(tmp_path, strategy):
+    session, curator, _ = make_session(tmp_path, strategy=strategy)
+    slot_id = session.add_image_slot(1, "SLV-3 rocket at Sriharikota", real_subject=True)
+    assert asyncio.run(session.generate_image(slot_id)) is True
+    assert curator.images_painted == 1
+    assert load_slots(session.book)[0].candidates[-1].provider == "ai"
+
+
+def test_generate_whole_chapter_image_preserves_legacy_section_slots(tmp_path):
+    session, curator, _ = make_session(tmp_path)
+    asyncio.run(session.plan_images())
+    session.skip_image("ch01-2")
+    before = load_slots(session.book)
+    # Simulate the pre-opener manifests from existing books.
+    from bookguild.images import save_slots
+    for slot in before:
+        slot.role = "section"
+    save_slots(session.book, before)
+    ending = "The chapter ends by connecting all these discoveries."
+    write_file(session.book, 1, "final.md", "Science and discovery. " * 800 + ending)
+    calls = []
+
+    async def chat(model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good illustration."}), model=model)
+        calls.append(messages[0]["content"])
+        assert ending in messages[0]["content"]
+        return LLMResult(text=json.dumps({"images": [{"role": "chapter", "purpose": "Discoveries together",
+                           "real_subject": False, "source": "ai", "ai_prompt": "A scientific instrument"}]}),
+                         model=model)
+
+    curator.chat = chat
+    assert asyncio.run(session.generate_chapter_image(1))
+    slots = load_slots(session.book)
+    opener = next(s for s in slots if s.role == "chapter")
+    assert len(slots) == 3 and opener.id == "ch01-3"
+    assert opener.candidates[0].provider == "ai"
+    assert [s for s in slots if s.role == "section"] == before
+    assert asyncio.run(session.generate_chapter_image(1))
+    assert len(calls) == 1  # reuse the saved whole-chapter plan
+    assert len(load_slots(session.book)[0].candidates) == 2
+
+
+def test_chapter_image_requires_written_chapter_and_respects_busy(tmp_path):
+    session, curator, _ = make_session(tmp_path)
+    assert asyncio.run(session.generate_chapter_image(2)) is False
+    session.busy = "another paid step"
+    assert asyncio.run(session.generate_chapter_image(1)) is False
+    assert curator.images_painted == 0
+
+
+def test_chapter_image_button_emits_selected_chapter(tmp_path, monkeypatch):
+    from bookguild.images import ImageSlot
+    from bookguild.ui.images_view import ImagesView
+    from PySide6.QtWidgets import QInputDialog
+
+    view = ImagesView()
+    view.set_slots([ImageSlot("ch03-1", 3, "Science")], BookProfile(), tmp_path, Status.WAITING)
+    received = []
+    view.chapter_image_requested.connect(received.append)
+
+    def choose(*args):
+        assert args[3] == 3
+        return 3, True
+
+    monkeypatch.setattr(QInputDialog, "getInt", choose)
+    view.chapter_image_button.click()
+    assert received == [3]
+    view.set_status(Status.RUNNING)
+    assert not view.chapter_image_button.isEnabled()
+    view.close()

@@ -56,6 +56,7 @@ class CoverConcept:
     title_position: str = "top"  # where the art leaves calm space for the title
     art_file: str = ""  # relative to the book folder
     model: str = ""
+    reviews: list[dict] = field(default_factory=list)
 
 
 @dataclass

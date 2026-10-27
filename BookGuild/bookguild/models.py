@@ -57,6 +57,7 @@ class ModelProfile:
     archivist: str
     image: str
     fallback: str
+    image_reviewer: str = "google/gemini-3.1-flash-lite"
     cover_image: str = "google/gemini-3.1-flash-image"  # needs 2K output: ~1696x2528 px ≈ 277 dpi on a 6x9 cover
     search: str = "duckduckgo"  # primary web search provider for the Scouts
     search_fallback: str = "duckduckgo"  # used if the primary fails or has no key
@@ -73,6 +74,8 @@ class ModelProfile:
             return self.chair
         if agent == "Archivist":
             return self.archivist
+        if agent == "Image Reviewer":
+            return self.image_reviewer
         return self.default
 
 
@@ -121,6 +124,7 @@ def load_model_profiles(path: Path = DEFAULT_MODELS_PATH) -> dict[str, ModelProf
             archivist=values.pop("archivist"),
             image=values.pop("image"),
             fallback=values.pop("fallback"),
+            image_reviewer=values.pop("image_reviewer", "google/gemini-3.1-flash-lite"),
             cover_image=values.pop("cover_image", "google/gemini-3.1-flash-image"),
             search=values.pop("search", "duckduckgo"),
             search_fallback=values.pop("search_fallback", "duckduckgo"),
@@ -147,6 +151,7 @@ def save_model_profiles(profiles: dict[str, ModelProfile], path: Path = DEFAULT_
             f"chair     = {json.dumps(profile.chair)}",
             f"archivist = {json.dumps(profile.archivist)}",
             f"image     = {json.dumps(profile.image)}",
+            f"image_reviewer = {json.dumps(profile.image_reviewer)}",
             f"cover_image = {json.dumps(profile.cover_image)}",
             f"fallback  = {json.dumps(profile.fallback)}",
             f"search          = {json.dumps(profile.search)}",

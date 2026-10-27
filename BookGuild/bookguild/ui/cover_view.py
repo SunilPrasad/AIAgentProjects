@@ -236,6 +236,15 @@ class CoverView(QWidget):
             use.clicked.connect(lambda _=False, cid=concept.id: self.concept_chosen.emit(cid))
             inner.addWidget(picture, alignment=Qt.AlignmentFlag.AlignHCenter)
             inner.addWidget(QLabel(f"<b>{concept.id}: {concept.name}</b>"))
+            for index, review in enumerate(concept.reviews, 1):
+                label = QLabel(f"Attempt {index}: {review.get('score', 'unscored')}/100\n"
+                               f"{review.get('feedback', '')}")
+                label.setTextFormat(Qt.TextFormat.PlainText)
+                label.setWordWrap(True)
+                label.setMaximumWidth(260)
+                inner.addWidget(label)
+            if concept.reviews and (concept.reviews[-1].get("score") or 0) <= 70:
+                use.setEnabled(False)
             inner.addWidget(use)
             card.setFixedSize(card.sizeHint())
             column.addWidget(card)
