@@ -223,10 +223,22 @@ async def approve(job: ImageJob, slot: ImageSlot, candidate_id: str) -> None:
     candidate.status, slot.chosen, slot.file, slot.status = APPROVED, candidate.id, relative, SLOT_APPROVED
 
 
-def reject(slot: ImageSlot, candidate_id: str) -> None:
+def reject(book: Book, slot: ImageSlot, candidate_id: str) -> None:
     candidate = slot.candidate(candidate_id)
     if candidate is None:
         return
+    paths = [candidate.preview]
+    if slot.chosen == candidate_id and slot.file:
+        paths.append(slot.file)
+    image_root = (book.folder / "images").resolve()
+    for relative in set(paths):
+        if not relative:
+            continue
+        path = (book.folder / relative).resolve()
+        # Manifests may have been edited: never remove a user's original upload
+        # or anything outside this book's managed image files.
+        if path.is_relative_to(image_root) and path.is_file():
+            path.unlink()
     candidate.status = REJECTED
     if slot.chosen == candidate_id:
         slot.chosen, slot.file, slot.status = "", "", SLOT_NEEDS_CHOICE

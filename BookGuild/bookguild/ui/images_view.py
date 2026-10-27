@@ -112,6 +112,7 @@ class ImagesView(QWidget):
         self.slots: list[ImageSlot] = []
         self.profile: BookProfile | None = None
         self.book_folder = Path(".")
+        self.busy = False
 
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
@@ -217,10 +218,21 @@ class ImagesView(QWidget):
             color = STATUS_COLORS[Status.WAITING]
         self.status_label.setText(f"<b>Images</b> - {escape(text)}")
         self.status_label.setStyleSheet(f"color: {color};")
-        busy = status == Status.RUNNING
+        busy = self.busy = status == Status.RUNNING
         self.plan_button.setEnabled(not busy)
         for button in self.slot_buttons.values():
             button.setEnabled(not busy and self.selected_slot() is not None)
+        self._update_slot_buttons()
+
+    def _update_slot_buttons(self) -> None:
+        slot = self.selected_slot()
+        ready = slot is not None and not self.busy
+        strategy = self.profile.image_strategy if self.profile else "none"
+        search = ready and strategy != "none" and (strategy != "ai_generated" or slot.real_subject)
+        paint = ready and strategy in ("mixed", "ai_generated") and not slot.real_subject
+        self.slot_buttons["find"].setEnabled(bool(search))
+        self.slot_buttons["own"].setEnabled(bool(search))
+        self.slot_buttons["ai"].setEnabled(bool(paint))
 
     def selected_slot_id(self) -> str | None:
         slot = self.selected_slot()
@@ -238,6 +250,7 @@ class ImagesView(QWidget):
 
     def show_slot(self) -> None:
         self._new_cards_area()
+        self._update_slot_buttons()
         slot = self.selected_slot()
         if slot is None:
             self.slot_header.setText("")
@@ -249,11 +262,11 @@ class ImagesView(QWidget):
             f"<span style='color:{MUTED}'>Caption: {escape(slot.caption)}<br>"
             f"Goes next to: “{escape(slot.anchor)}”<br>"
             f"Searches (specific → wider): {escape(' · '.join(slot.queries()))}</span>")
-        self.slot_buttons["ai"].setEnabled(not slot.real_subject and self.slot_buttons["find"].isEnabled())
-        visible = sorted(slot.candidates, key=lambda c: (c.status == REJECTED, c.status != APPROVED))
+        visible = sorted((c for c in slot.candidates if c.status != REJECTED),
+                         key=lambda c: c.status != APPROVED)
         for i, candidate in enumerate(visible):
             self.cards.addWidget(CandidateCard(self, slot, candidate), i // 2, i % 2)
-        if not slot.candidates:
+        if not visible:
             self.cards.addWidget(QLabel("No candidates - find more, generate one, or upload your own."), 0, 0)
         rows = (len(visible) + 1) // 2 or 1
         self.cards.setRowStretch(rows, 1)  # cards stay at the top-left; spare space goes below/right

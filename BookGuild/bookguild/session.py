@@ -546,11 +546,19 @@ class BookSession:
 
     async def find_more_images(self, slot_id: str, query: str = "") -> bool:
         """Search again with the slot's phrases, or with your own words (`query`)."""
+        slot = next((s for s in self.image_slots() if s.id == slot_id), None)
+        if self.profile and (self.profile.image_strategy == "none" or
+                             (self.profile.image_strategy == "ai_generated" and slot and not slot.real_subject)):
+            self.reply("The profile uses AI-generated images. Use Generate AI image for this slot.")
+            return False
         queries = [query.strip()] if query.strip() else None
         return await self._slot_action(slot_id, f"searching for '{query}'" if queries else "finding more images",
                                        lambda job, slot: images_stage.find_licensed(job, slot, queries))
 
     async def generate_image(self, slot_id: str) -> bool:
+        if self.profile and self.profile.image_strategy in ("none", "licensed_web"):
+            self.reply("The profile does not allow AI images. Change Image source in the Profile tab first.")
+            return False
         return await self._slot_action(slot_id, "painting an AI image",
                                        lambda job, slot: images_stage.generate_ai(job, slot))
 
@@ -559,7 +567,12 @@ class BookSession:
                                        lambda job, slot: images_stage.approve(job, slot, candidate_id))
 
     def reject_image(self, slot_id: str, candidate_id: str) -> None:
-        self._edit_slot(slot_id, lambda slot: images_stage.reject(slot, candidate_id))
+        if self._refuse_if_busy():
+            return
+        try:
+            self._edit_slot(slot_id, lambda slot: images_stage.reject(self.book, slot, candidate_id))
+        except OSError as error:
+            self.reply(f"Could not delete the rejected image: {error}")
 
     def skip_image(self, slot_id: str) -> str:
         def skip(slot: ImageSlot) -> None:

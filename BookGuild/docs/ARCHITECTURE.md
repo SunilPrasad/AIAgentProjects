@@ -184,6 +184,15 @@ preserved when planning again. To replan an old book, first back up its `images`
 `images/manifest.json` and use “Find images for written chapters”. This resets the saved image choices;
 do not remove a manifest whose approvals you still need.
 
+Image actions follow the current profile even for older slots: `ai_generated` enables AI generation and
+disables both licensed-search buttons for non-real subjects; real subjects instead allow licensed search
+and disable generation. `licensed_web` disables generation, `mixed` allows both for non-real subjects,
+and `none` disables both. Session actions enforce these rules as well as the UI.
+
+Rejecting a candidate immediately hides its card and deletes its managed preview and, if selected, its
+approved copy. Uploaded originals outside the book are preserved. The manifest retains rejected metadata
+so later searches do not download that same URL again. Deletion is restricted to the book's `images` folder.
+
 ```mermaid
 flowchart LR
     C[written chapter] --> P[Curator plans slots<br/>purpose · caption · anchor · real_subject]

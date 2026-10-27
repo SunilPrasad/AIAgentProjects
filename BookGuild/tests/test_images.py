@@ -332,3 +332,82 @@ def test_legacy_manifest_still_loads(tmp_path):
                                  "search_query": "cosmic rays", "candidates": []}]))
     slot = load_slots(session.book)[0]
     assert slot.role == "section" and slot.queries() == ["cosmic rays"]
+
+
+def test_reject_removes_preview_and_approved_copy(tmp_path):
+    from bookguild.images import REJECTED, SLOT_NEEDS_CHOICE
+
+    session, _, _ = make_session(tmp_path)
+    asyncio.run(session.plan_images())
+    asyncio.run(session.approve_image("ch01-1", "c1"))
+    before = load_slots(session.book)[0]
+    preview = session.book.folder / before.candidate("c1").preview
+    approved = session.book.folder / before.file
+    other = session.book.folder / before.candidate("c2").preview
+    session.reject_image("ch01-1", "c1")
+    slot = load_slots(session.book)[0]
+    assert not preview.exists() and not approved.exists() and other.exists()
+    assert slot.candidate("c1").status == REJECTED
+    assert slot.status == SLOT_NEEDS_CHOICE and not slot.chosen and not slot.file
+    session.reject_image("ch01-1", "c1")  # already removed is harmless
+
+
+def test_reject_upload_preserves_original_and_reject_cannot_escape_book(tmp_path):
+    from bookguild.images import save_slots
+
+    session, _, _ = make_session(tmp_path)
+    asyncio.run(session.plan_images())
+    original = tmp_path / "original.png"
+    original.write_bytes(png_bytes())
+    session.upload_image("ch01-1", original)
+    slot = load_slots(session.book)[0]
+    copied = session.book.folder / slot.file
+    session.reject_image(slot.id, slot.chosen)
+    assert original.exists() and not copied.exists()
+    slots = load_slots(session.book)
+    slots[0].candidates[0].preview = str(original.resolve())
+    save_slots(session.book, slots)
+    session.reject_image(slots[0].id, slots[0].candidates[0].id)
+    assert original.exists()
+
+
+@pytest.mark.parametrize("strategy,real,search,paint", [
+    ("ai_generated", False, False, True),
+    ("ai_generated", True, True, False),
+    ("licensed_web", False, True, False),
+    ("mixed", False, True, True),
+    ("mixed", True, True, False),
+    ("none", False, False, False),
+])
+def test_image_buttons_follow_profile_and_hide_rejected(tmp_path, strategy, real, search, paint):
+    from bookguild.images import ImageSlot, REJECTED
+    from bookguild.ui.images_view import ImagesView, CandidateCard
+
+    view = ImagesView()
+    # A stale slot source must not override the current profile.
+    slot = ImageSlot("ch01-1", 1, "Science", source="licensed", real_subject=real,
+                     candidates=[Candidate("c1", "ai", "Rejected", "missing.png", status=REJECTED)])
+    view.set_slots([slot], BookProfile(image_strategy=strategy), tmp_path, Status.WAITING)
+    assert view.slot_buttons["find"].isEnabled() == search
+    assert view.slot_buttons["own"].isEnabled() == search
+    assert view.slot_buttons["ai"].isEnabled() == paint
+    assert not view.cards_widget.findChildren(CandidateCard)
+    view.set_status(Status.RUNNING)
+    view.show_slot()
+    assert not any(view.slot_buttons[k].isEnabled() for k in ("find", "own", "ai"))
+    view.set_status(Status.WAITING)
+    assert view.slot_buttons["ai"].isEnabled() == paint
+    view.close()
+
+
+def test_session_actions_follow_profile(tmp_path):
+    session, curator, _ = make_session(tmp_path, strategy="ai_generated")
+    asyncio.run(session.plan_images())
+    assert asyncio.run(session.find_more_images("ch01-2")) is False
+    assert asyncio.run(session.generate_image("ch01-2")) is True
+    profile = session.profile
+    profile.image_strategy = "licensed_web"
+    save_profile(session.book, profile)
+    painted = curator.images_painted
+    assert asyncio.run(session.generate_image("ch01-2")) is False
+    assert curator.images_painted == painted
