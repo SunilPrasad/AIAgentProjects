@@ -175,8 +175,8 @@ place as Chapter opener or Section.
 Plans request 3–4 search phrases from specific to broad. Every phrase is searched across enabled providers;
 results are pooled round-robin across searches, deduplicated by full-image URL, and capped at nine new
 candidates per round. Candidates record `found_by`, shown on their cards. “Search with my own words…”
-searches a custom phrase without replacing the saved plan. Real subjects always use licensed images,
-including in the `ai_generated` profile; they are never painted.
+searches a custom phrase without replacing the saved plan. In mixed-source books real subjects use
+licensed images. The explicit `ai_generated` profile takes precedence and illustrates all subjects.
 
 `ImageSlot.role` and `search_queries`, and `Candidate.found_by`, persist in `images/manifest.json`.
 Older manifests retain their single `search_query` and default to section placement. Existing slots are
@@ -185,9 +185,10 @@ preserved when planning again. To replan an old book, first back up its `images`
 do not remove a manifest whose approvals you still need.
 
 Image actions follow the current profile even for older slots: `ai_generated` enables AI generation and
-disables both licensed-search buttons for non-real subjects; real subjects instead allow licensed search
-and disable generation. `licensed_web` disables generation, `mixed` allows both for non-real subjects,
-and `none` disables both. Session actions enforce these rules as well as the UI.
+disables both licensed-search buttons for every slot, including existing real-subject slots.
+The profile controls automatic source selection and search availability. Manual “Generate AI image” is
+always enabled for a selected slot while idle, for every profile and for real subjects too. This explicit
+request overrides the automatic source policy. Search is disabled for AI-only and no-images profiles.
 
 Rejecting a candidate immediately hides its card and deletes its managed preview and, if selected, its
 approved copy. Uploaded originals outside the book are preserved. The manifest retains rejected metadata
@@ -196,18 +197,20 @@ so later searches do not download that same URL again. Deletion is restricted to
 ```mermaid
 flowchart LR
     C[written chapter] --> P[Curator plans slots<br/>purpose · caption · anchor · real_subject]
-    P --> R{real person / place<br/>or licensed_web?}
+    P --> AI{AI-only profile?}
+    AI -- yes --> A[AI illustration<br/>no text/logos]
+    AI -- no --> R{real person / place<br/>or licensed_web?}
     R -- yes --> L[Wikimedia Commons<br/>+ Pexels/Pixabay with keys<br/>strict licence rules]
-    R -- no, mixed/ai --> A[AI illustration<br/>no text/logos/real people]
+    R -- no, mixed --> A
     L --> Y[you: approve · reject · upload own · skip]
     A --> Y
     Y --> F[images/approved/ at print size<br/>manifest.json · credits.md]
 ```
 
 - **Rules enforced in code, not only in prompts:**
-  - Real subjects only ever get licensed images.
-  - Strategy `licensed_web` never paints and `ai_generated` never searches.
-  - Every AI prompt bans text, logos, brand names and recognisable real people. An early test image painted a trademarked brand name on a toy box.
+  - Real subjects get licensed images in mixed-source books; AI-only profiles illustrate them.
+  - Automatic planning in `licensed_web` never paints and `ai_generated` never searches. Manual generation remains available in every profile.
+  - Every AI prompt bans text, logos and brand names and describes original illustrations rather than archival photographs.
   - `depicts_named_person` overrides the Curator when a description shows a main character of the chapter (a name that appears at least 3 times) together with person words. In testing, a cheap Curator marked "young Chandru Raman as a child" as an AI idea.
 - **Commons licence rules** (from the author's *Great Indians* project):
   - CC BY / CC BY-SA (country suffixes allowed) / CC0 / Public Domain only, never NC/ND/fair use.

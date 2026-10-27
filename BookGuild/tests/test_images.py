@@ -175,11 +175,11 @@ def test_approve_skip_and_credits(tmp_path):
     assert "Homi Bhabha photo 1" in credits
 
 
-def test_ai_is_refused_for_real_subjects(tmp_path):
+def test_manual_ai_generation_is_available_for_real_subjects(tmp_path):
     session, curator, _ = make_session(tmp_path)
     asyncio.run(session.plan_images())
-    assert asyncio.run(session.generate_image("ch01-1")) is False
-    assert curator.images_painted == 1  # only the idea slot's image
+    assert asyncio.run(session.generate_image("ch01-1")) is True
+    assert curator.images_painted == 2
 
 
 def test_licensed_only_books_never_paint(tmp_path):
@@ -266,13 +266,13 @@ def test_named_person_safety_net():
     assert not depicts_named_person("A young man walking in a 1920s street", chapter)  # no named character
 
 
-def test_real_subjects_get_photos_even_in_ai_profile(tmp_path):
+def test_ai_profile_generates_for_real_subjects_too(tmp_path):
     session, curator, _ = make_session(tmp_path, strategy="ai_generated")
     assert asyncio.run(session.plan_images())
     real, idea = load_slots(session.book)
-    assert real.source == "licensed" and real.candidates
-    assert all(c.provider == "commons" for c in real.candidates)
-    assert idea.source == "ai" and curator.images_painted == 1
+    assert real.source == "ai" and real.candidates
+    assert all(c.provider == "ai" for c in real.candidates)
+    assert idea.source == "ai" and curator.images_painted == 2
 
 
 def test_opener_uses_full_chapter_and_sections_are_optional(tmp_path):
@@ -373,11 +373,11 @@ def test_reject_upload_preserves_original_and_reject_cannot_escape_book(tmp_path
 
 @pytest.mark.parametrize("strategy,real,search,paint", [
     ("ai_generated", False, False, True),
-    ("ai_generated", True, True, False),
-    ("licensed_web", False, True, False),
+    ("ai_generated", True, False, True),
+    ("licensed_web", False, True, True),
     ("mixed", False, True, True),
-    ("mixed", True, True, False),
-    ("none", False, False, False),
+    ("mixed", True, True, True),
+    ("none", False, False, True),
 ])
 def test_image_buttons_follow_profile_and_hide_rejected(tmp_path, strategy, real, search, paint):
     from bookguild.images import ImageSlot, REJECTED
@@ -392,6 +392,9 @@ def test_image_buttons_follow_profile_and_hide_rejected(tmp_path, strategy, real
     assert view.slot_buttons["own"].isEnabled() == search
     assert view.slot_buttons["ai"].isEnabled() == paint
     assert not view.cards_widget.findChildren(CandidateCard)
+    if strategy == "ai_generated":
+        assert view.table.item(0, 3).text() == "ai"
+        assert "licensed images or your own only" not in view.slot_header.text()
     view.set_status(Status.RUNNING)
     view.show_slot()
     assert not any(view.slot_buttons[k].isEnabled() for k in ("find", "own", "ai"))
@@ -409,5 +412,29 @@ def test_session_actions_follow_profile(tmp_path):
     profile.image_strategy = "licensed_web"
     save_profile(session.book, profile)
     painted = curator.images_painted
-    assert asyncio.run(session.generate_image("ch01-2")) is False
-    assert curator.images_painted == painted
+    assert asyncio.run(session.generate_image("ch01-2")) is True
+    assert curator.images_painted == painted + 1
+
+
+def test_ai_profile_overrides_existing_real_licensed_slot(tmp_path):
+    session, curator, _ = make_session(tmp_path, strategy="mixed")
+    asyncio.run(session.plan_images())
+    assert load_slots(session.book)[0].real_subject
+    assert load_slots(session.book)[0].source == "licensed"
+    profile = session.profile
+    profile.image_strategy = "ai_generated"
+    save_profile(session.book, profile)
+    painted = curator.images_painted
+    assert asyncio.run(session.find_more_images("ch01-1")) is False
+    assert asyncio.run(session.generate_image("ch01-1")) is True
+    assert curator.images_painted == painted + 1
+    assert load_slots(session.book)[0].candidates[-1].provider == "ai"
+
+
+@pytest.mark.parametrize("strategy", ["ai_generated", "licensed_web", "mixed", "none"])
+def test_manual_generation_overrides_every_profile_for_real_subject(tmp_path, strategy):
+    session, curator, _ = make_session(tmp_path, strategy=strategy)
+    slot_id = session.add_image_slot(1, "SLV-3 rocket at Sriharikota", real_subject=True)
+    assert asyncio.run(session.generate_image(slot_id)) is True
+    assert curator.images_painted == 1
+    assert load_slots(session.book)[0].candidates[-1].provider == "ai"

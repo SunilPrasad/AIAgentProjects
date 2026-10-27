@@ -147,7 +147,7 @@ class ImagesView(QWidget):
         for key, text, tip in (("find", "Find more licensed", "Search all of this slot's phrases again"),
                                ("own", "Search with my own words…", "Try a wider (or different) idea, e.g. "
                                                                     "'cosmic rays' or 'Bombay 1930s'"),
-                               ("ai", "Generate AI image", "Paint an illustration (about $0.03); not for real people"),
+                               ("ai", "Generate AI image", "Paint an illustration using the profile's image style"),
                                ("upload", "Upload my own…", "Use your own image file; approved at once"),
                                ("skip", "Skip this slot", "Leave this place without an image")):
             button = QPushButton(text)
@@ -189,7 +189,8 @@ class ImagesView(QWidget):
         for slot in slots:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            kind = "real (licensed)" if slot.real_subject else slot.source
+            kind = "ai" if profile and profile.image_strategy == "ai_generated" else \
+                "real (licensed)" if slot.real_subject else slot.source
             place = "Chapter opener" if slot.role == "chapter" else "Section"
             for column, value in enumerate((slot.id, place, slot.purpose, kind, slot.status)):
                 item = QTableWidgetItem(value)
@@ -228,8 +229,8 @@ class ImagesView(QWidget):
         slot = self.selected_slot()
         ready = slot is not None and not self.busy
         strategy = self.profile.image_strategy if self.profile else "none"
-        search = ready and strategy != "none" and (strategy != "ai_generated" or slot.real_subject)
-        paint = ready and strategy in ("mixed", "ai_generated") and not slot.real_subject
+        search = ready and strategy in ("licensed_web", "mixed")
+        paint = ready
         self.slot_buttons["find"].setEnabled(bool(search))
         self.slot_buttons["own"].setEnabled(bool(search))
         self.slot_buttons["ai"].setEnabled(bool(paint))
@@ -255,19 +256,23 @@ class ImagesView(QWidget):
         if slot is None:
             self.slot_header.setText("")
             return
-        real = " · <b>real subject: licensed images or your own only</b>" if slot.real_subject else ""
+        ai_only = self.profile and self.profile.image_strategy == "ai_generated"
+        real = " · <b>AI illustration (profile setting)</b>" if ai_only else \
+            " · <b>real subject: licensed photo planned; AI illustration also available</b>" if slot.real_subject else ""
         place = "Chapter opener" if slot.role == "chapter" else "Section image"
         self.slot_header.setText(
             f"<b>{escape(slot.id)}</b> ({place}) - {escape(slot.purpose)}{real}<br>"
             f"<span style='color:{MUTED}'>Caption: {escape(slot.caption)}<br>"
             f"Goes next to: “{escape(slot.anchor)}”<br>"
-            f"Searches (specific → wider): {escape(' · '.join(slot.queries()))}</span>")
+            + ("AI generation uses your profile's image style.</span>" if ai_only else
+               f"Searches (specific → wider): {escape(' · '.join(slot.queries()))}</span>"))
         visible = sorted((c for c in slot.candidates if c.status != REJECTED),
                          key=lambda c: c.status != APPROVED)
         for i, candidate in enumerate(visible):
             self.cards.addWidget(CandidateCard(self, slot, candidate), i // 2, i % 2)
         if not visible:
-            self.cards.addWidget(QLabel("No candidates - find more, generate one, or upload your own."), 0, 0)
+            self.cards.addWidget(QLabel("No candidates - generate an AI image or upload your own." if ai_only else
+                                       "No candidates - find more, generate one, or upload your own."), 0, 0)
         rows = (len(visible) + 1) // 2 or 1
         self.cards.setRowStretch(rows, 1)  # cards stay at the top-left; spare space goes below/right
         self.cards.setColumnStretch(2, 1)
@@ -304,7 +309,7 @@ class ImagesView(QWidget):
             return
         real = QMessageBox.question(self, "Add image slot",
                                     "Does it show a real person, place or historical object?\n"
-                                    "(Then only licensed images or your own upload are allowed.)") \
+                                    "(Mixed-source books use licensed photos for real subjects; AI-only books use illustrations.)") \
             == QMessageBox.StandardButton.Yes
         self.add_slot_requested.emit(chapter, purpose.strip(), real)
 

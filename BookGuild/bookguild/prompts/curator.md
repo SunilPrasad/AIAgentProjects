@@ -11,6 +11,9 @@ THE CHAPTER ({{number}}: {{title}}):
 
 Think about the WHOLE chapter first, before any single paragraph.
 
+The Image policy above takes precedence over the default rules below. If it says AI illustrations only,
+use source "ai" even for real subjects and describe an original illustration, not an archival photograph.
+
 1. ONE chapter-opener image (`role`: "chapter"): the single picture that best represents what this whole chapter is about. It goes at the start of the chapter.
 2. Then AT MOST {{extra}} section image(s) (`role`: "section"), and only where a picture genuinely helps a young reader: to show a real person, place or object they would otherwise have to imagine, or to make a hard idea easier to understand. Not every section needs one, and fewer is better than filler. Plan zero section images if none would really help.
 

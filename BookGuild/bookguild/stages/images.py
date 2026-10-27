@@ -7,8 +7,8 @@
     approve  the print-size file is downloaded into images/approved/
 
 Rules the code enforces (not just the prompt):
-  - real people/places/objects (`real_subject`) get licensed images only, never AI
-  - image_strategy "licensed_web" never generates AI images; "ai_generated" searches only for real subjects
+  - the profile's AI-only choice takes precedence, including for real subjects
+  - mixed books use licensed images for real subjects
   - every AI prompt forbids text, letters, logos and brand names (an early test image
     painted a trademarked brand name on a toy box)
 """
@@ -37,7 +37,7 @@ from bookguild.storage import Book
 RESULTS_PER_QUERY = 3  # from each search phrase…
 MAX_NEW_CANDIDATES = 9  # …pooled, up to this many new candidates per search round
 AI_RULES = ("Rules: no text, letters, numbers, captions, logos, labels or brand names anywhere in the image. "
-            "Do not depict any recognisable real person. Suitable for a children's book.")
+            "Suitable for the book's audience.")
 
 
 @dataclass
@@ -55,7 +55,8 @@ class ImageJob:
 def policy_text(strategy: str) -> str:
     return {
         "licensed_web": "Use only licensed photos and archive images (source must be \"licensed\").",
-        "ai_generated": "Use AI illustrations (source \"ai\") except for real subjects, which must stay \"licensed\".",
+        "ai_generated": "Use AI illustrations only (source \"ai\"), including real people, places and historical objects. "
+                        "These are illustrations, not archival photographs. This profile overrides the usual real-subject rule.",
         "mixed": "Use licensed photos for real people, places and objects; AI illustrations for ideas and scenes.",
     }.get(strategy, "No images.")
 
@@ -86,10 +87,10 @@ async def plan_chapter(job: ImageJob, number: int, count: int) -> list[ImageSlot
         real = bool(raw.get("real_subject")) or depicts_named_person(
             f"{raw.get('purpose', '')} {raw.get('ai_prompt') or ''}", chapter)
         source = "ai" if str(raw.get("source")) == "ai" else "licensed"
-        if real or job.profile.image_strategy == "licensed_web":
-            source = "licensed"  # enforced: real subjects are never AI-generated
-        elif job.profile.image_strategy == "ai_generated":
+        if job.profile.image_strategy == "ai_generated":
             source = "ai"
+        elif real or job.profile.image_strategy == "licensed_web":
+            source = "licensed"
         purpose = str(raw["purpose"]).strip()
         raw_queries = raw.get("search_queries") or []
         if isinstance(raw_queries, str):
@@ -169,12 +170,12 @@ async def add_hit(job: ImageJob, slot: ImageSlot, hit: ImageHit, query: str = ""
 
 
 async def generate_ai(job: ImageJob, slot: ImageSlot) -> Candidate:
-    """One AI illustration for the slot. Refused for real subjects."""
-    if slot.real_subject:
-        raise PermanentError(f"{slot.id} shows a real subject - only licensed images or your own upload",
-                             use_fallback=False)
+    """One AI illustration. An explicit generation request overrides the automatic source policy."""
     style = job.profile.image_style or "warm, painterly children's book illustration"
     prompt = f"{slot.ai_prompt}\nStyle: {style}.\n{AI_RULES}"
+    prompt += ("\nCreate an original illustration of the subject described above, not an archival photograph. "
+               "Any instructions above to use only licensed photos are old planning metadata; "
+               "the author's current choice is AI illustration.")
     job.bus.set_agent_status("Curator", Status.RUNNING, f"painting {slot.id}", "images")
     result = await job.gateway.generate_image(agent="Curator", stage="images", model=job.models.image, prompt=prompt)
     candidate_id = slot.next_candidate_id()
@@ -190,7 +191,11 @@ async def generate_ai(job: ImageJob, slot: ImageSlot) -> Candidate:
 async def fill_slot(job: ImageJob, slot: ImageSlot) -> None:
     """First candidates for a new slot, following the book's image strategy."""
     strategy = job.profile.image_strategy
-    if slot.source == "licensed" and (strategy != "ai_generated" or slot.real_subject):
+    if strategy == "ai_generated":
+        slot.source = "ai"
+        await generate_ai(job, slot)
+        return
+    if slot.source == "licensed":
         await find_licensed(job, slot)
     if slot.source == "ai" or (strategy == "mixed" and not slot.candidates and not slot.real_subject):
         await generate_ai(job, slot)

@@ -546,9 +546,7 @@ class BookSession:
 
     async def find_more_images(self, slot_id: str, query: str = "") -> bool:
         """Search again with the slot's phrases, or with your own words (`query`)."""
-        slot = next((s for s in self.image_slots() if s.id == slot_id), None)
-        if self.profile and (self.profile.image_strategy == "none" or
-                             (self.profile.image_strategy == "ai_generated" and slot and not slot.real_subject)):
+        if self.profile and self.profile.image_strategy in ("none", "ai_generated"):
             self.reply("The profile uses AI-generated images. Use Generate AI image for this slot.")
             return False
         queries = [query.strip()] if query.strip() else None
@@ -556,9 +554,6 @@ class BookSession:
                                        lambda job, slot: images_stage.find_licensed(job, slot, queries))
 
     async def generate_image(self, slot_id: str) -> bool:
-        if self.profile and self.profile.image_strategy in ("none", "licensed_web"):
-            self.reply("The profile does not allow AI images. Change Image source in the Profile tab first.")
-            return False
         return await self._slot_action(slot_id, "painting an AI image",
                                        lambda job, slot: images_stage.generate_ai(job, slot))
 
