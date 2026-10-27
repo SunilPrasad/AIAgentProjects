@@ -220,6 +220,35 @@ does not remove the book's style samples.
 Transport follows [OpenRouter image-input documentation](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding).
 Live smoke test with the configured test image model and a synthetic sample succeeded at $0.0339005.
 
+### Automatic image review and refinement
+
+Every newly AI-generated chapter image (including openers) and cover concept is visually reviewed by
+the **Image Reviewer**. `image_reviewer` is a configurable vision-model role in each model profile and
+AI → Models. Its prompt receives the actual image pixels, book-wide visual samples, written style,
+intended subject and chapter text (or book summary for covers). Licensed search results, uploaded images
+and older generated images are unchanged by this automatic generation workflow.
+
+The reviewer returns an integer score from 0–100 and concrete feedback, judged on relevance/accuracy,
+style consistency, composition and visual quality. **Strictly above 70 passes**. Passing chapter images
+are automatically approved and copied to `images/approved/`. Passing cover art becomes selectable;
+final cover export still needs the author and user approval. Scores of 0–70 trigger feedback-guided
+regeneration, with the original instructions and style samples retained. There are at most **three
+improvement generations after the initial image** (four images total). No pass means no automatic
+acceptance; all scored attempts remain visible with feedback, and the process stops.
+
+Candidate review score, feedback, reviewer model, iteration and state persist in the image manifest.
+Cover reviews persist with concepts in `cover/cover.json` and checkpoint in `cover/reviews/<id>.json`.
+The chapter workflow checkpoints each generated image before reviewing it; retrying a reviewer error
+reuses saved pixels instead of paying to paint again. A reviewer failure or budget/pause stop leaves
+the image unaccepted and never starts another improvement generation. Reviewer calls and generation
+calls use the normal gateway budget/retry/cost tracking. Gateway transport retries are distinct from the
+three improvement limit. Rejection still removes managed image files and hides the candidate.
+
+The UI displays scores and feedback for every attempt. Failed/unscored review attempts cannot be approved
+through the image or cover actions. The reviewer judges visual quality, not a guarantee of factual accuracy.
+Live vision smoke test on a synthetic geometric image returned 95/100 with specific edge-quality feedback
+at $0.00045 using the configured vision model.
+
 Rejecting a candidate immediately hides its card and deletes its managed preview and, if selected, its
 approved copy. Uploaded originals outside the book are preserved. The manifest retains rejected metadata
 so later searches do not download that same URL again. Deletion is restricted to the book's `images` folder.

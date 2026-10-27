@@ -25,8 +25,9 @@ from bookguild import prompts
 from bookguild.chapters import read_file, strip_markers
 from bookguild.events import EventBus, Status
 from bookguild.gateway import AIGateway
-from bookguild.images import APPROVED, NEW, REJECTED, SLOT_APPROVED, SLOT_NEEDS_CHOICE, Candidate, ImageSlot
+from bookguild.images import APPROVED, NEW, REJECTED, SLOT_APPROVED, SLOT_NEEDS_CHOICE, Candidate, ImageSlot, load_slots, save_slots
 from bookguild.image_style import REFERENCE_GUIDANCE, reference_data_urls
+from bookguild.image_review import MAX_IMPROVEMENTS, PASS_SCORE, refinement_prompt, review_image
 from bookguild.models import ModelProfile
 from bookguild.outline import Outline
 from bookguild.profile import BookProfile
@@ -181,16 +182,64 @@ async def generate_ai(job: ImageJob, slot: ImageSlot) -> Candidate:
     references = reference_data_urls(job.book)
     if references:
         prompt += f"\n{REFERENCE_GUIDANCE}"
-    result = await job.gateway.generate_image(agent="Curator", stage="images", model=job.models.image, prompt=prompt,
-                                              reference_images=references)
-    candidate_id = slot.next_candidate_id()
-    relative = f"images/candidates/{slot.id}/{candidate_id}.png"
-    _write(job.book, relative, result.images[0])
-    width, height = image_size(job.book.folder / relative)
-    candidate = Candidate(id=candidate_id, provider="ai", title=slot.purpose, preview=relative, author="AI",
-                          license="AI-generated", width=width, height=height, ai_model=result.model, prompt=prompt)
-    slot.candidates.append(candidate)
+    pending = (slot.candidates[-1] if slot.candidates and slot.candidates[-1].status != REJECTED
+               and slot.candidates[-1].review_state in ("pending", "error") else None)
+    start = pending.review_iteration if pending else 1
+    feedback = []
+    if pending and start > 1:
+        for previous in reversed(slot.candidates[:-1]):
+            if previous.review_feedback:
+                feedback.insert(0, previous.review_feedback)
+            if previous.review_iteration == 1:
+                break
+    for iteration in range(start, MAX_IMPROVEMENTS + 2):
+        attempt_prompt = refinement_prompt(prompt, feedback) if feedback else prompt
+        if pending:
+            candidate, pending = pending, None
+            relative = candidate.preview
+            candidate.review_state = "pending"
+        else:
+            result = await job.gateway.generate_image(agent="Curator", stage="images", model=job.models.image,
+                                                      prompt=attempt_prompt, reference_images=references)
+            candidate_id = slot.next_candidate_id()
+            relative = f"images/candidates/{slot.id}/{candidate_id}.png"
+            _write(job.book, relative, result.images[0])
+            width, height = image_size(job.book.folder / relative)
+            candidate = Candidate(id=candidate_id, provider="ai", title=slot.purpose, preview=relative, author="AI",
+                                  license="AI-generated", width=width, height=height, ai_model=result.model,
+                                  prompt=attempt_prompt, review_state="pending", review_iteration=iteration)
+            slot.candidates.append(candidate)
+        _checkpoint_slot(job.book, slot)
+        try:
+            review = await review_image(job, job.book.folder / relative, slot.purpose,
+                                        strip_markers(read_file(job.book, slot.chapter, "final.md")), references, "images")
+        except LLMError as error:
+            candidate.review_state, candidate.review_feedback = "error", error.message
+            _checkpoint_slot(job.book, slot)
+            raise
+        candidate.review_score, candidate.review_feedback = review["score"], review["feedback"]
+        candidate.review_model = review["model"]
+        passed = review["score"] > PASS_SCORE
+        candidate.review_state = "accepted" if passed else "needs improvement"
+        job.bus.log(f"{slot.id}, attempt {iteration}: {review['score']}/100 — {review['feedback']}",
+                    "success" if passed else "warning", "images", "Image Reviewer")
+        _checkpoint_slot(job.book, slot)
+        if passed:
+            await approve(job, slot, candidate.id)
+            _checkpoint_slot(job.book, slot)
+            return candidate
+        feedback.append(review["feedback"])
+    job.bus.log(f"{slot.id}: stopped after three improvement attempts; no image passed review.",
+                "warning", "images", "Image Reviewer")
     return candidate
+
+
+def _checkpoint_slot(book: Book, slot: ImageSlot) -> None:
+    slots = load_slots(book)
+    slots = [slot if saved.id == slot.id else saved for saved in slots]
+    if not any(saved.id == slot.id for saved in slots):
+        slots.append(slot)
+    save_slots(book, slots)
 
 
 async def fill_slot(job: ImageJob, slot: ImageSlot) -> None:
@@ -214,6 +263,8 @@ async def approve(job: ImageJob, slot: ImageSlot, candidate_id: str) -> None:
     candidate = slot.candidate(candidate_id)
     if candidate is None:
         raise PermanentError(f"no candidate {candidate_id} in {slot.id}", use_fallback=False)
+    if candidate.review_state not in ("", "accepted"):
+        raise PermanentError("This image has not passed review (score must exceed 70).", use_fallback=False)
     if candidate.full_url:
         data = await with_retries(lambda: job.search.download(candidate.full_url), job.policy, asyncio.sleep)
         extension = _extension(candidate.full_url)

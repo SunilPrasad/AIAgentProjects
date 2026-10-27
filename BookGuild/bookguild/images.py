@@ -44,6 +44,11 @@ class Candidate:
     prompt: str = ""
     status: str = NEW  # new / approved / rejected
     found_by: str = ""  # the search words that found it (licensed images)
+    review_score: int | None = None
+    review_feedback: str = ""
+    review_state: str = ""  # legacy/unreviewed, pending, accepted, needs improvement, error
+    review_iteration: int = 0
+    review_model: str = ""
 
 
 @dataclass

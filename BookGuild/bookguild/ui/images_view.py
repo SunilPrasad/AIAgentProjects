@@ -72,6 +72,11 @@ class CandidateCard(QFrame):
                if candidate.found_by else "") +
             f"<span style='color:{MUTED}'>by {escape(candidate.author[:60] or '-')}</span><br>"
             f"{candidate.width}×{candidate.height}px · <span style='color:{dpi_color}'>{dpi} dpi - {verdict}</span>"
+            + (f"<br><b>Reviewer: {candidate.review_score}/100 · {escape(candidate.review_state)}</b>"
+               f"<br>Attempt {candidate.review_iteration}: {escape(candidate.review_feedback)}"
+               if candidate.review_score is not None else
+               f"<br>Review: {escape(candidate.review_state)} {escape(candidate.review_feedback)}"
+               if candidate.review_state else "")
             + (f"<br><b style='color:{STATUS_COLORS[Status.DONE]}'>✓ approved</b>" if candidate.status == APPROVED
                else "<br><span style='color:#8a8a8a'>rejected</span>" if candidate.status == REJECTED else ""))
         info.setWordWrap(True)
@@ -80,7 +85,7 @@ class CandidateCard(QFrame):
         info.setFixedWidth(THUMB_WIDTH)
 
         approve = QPushButton("Approve ✓")
-        approve.setEnabled(candidate.status != APPROVED)
+        approve.setEnabled(candidate.status != APPROVED and candidate.review_state in ("", "accepted"))
         approve.clicked.connect(lambda: view.approve_requested.emit(slot.id, candidate.id))
         reject = QPushButton("Reject")
         reject.setEnabled(candidate.status != REJECTED)

@@ -92,6 +92,9 @@ class FakeCurator:
         self.images_painted = 0
 
     async def chat(self, model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Clear and consistent with the book style."}),
+                             model=model)
         return LLMResult(text=json.dumps({"images": [
             {"purpose": "Homi Bhabha as a young man", "caption": "Homi Bhabha", "anchor": "born in 1909",
              "real_subject": True, "source": "ai", "search_query": "Homi Bhabha", "ai_prompt": "a man"},
@@ -248,6 +251,8 @@ def test_missing_search_query_falls_back_to_purpose(tmp_path):
     session, curator, _ = make_session(tmp_path)
 
     async def chat(model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good illustration."}), model=model)
         return LLMResult(text=json.dumps({"images": [{"purpose": "A generic 1920s street", "search_query": None,
                                                       "real_subject": False, "source": "ai"}]}), model=model)
     curator.chat = chat
@@ -281,6 +286,8 @@ def test_opener_uses_full_chapter_and_sections_are_optional(tmp_path):
     write_file(session.book, 1, "final.md", "A chapter about science. " * 700 + ending)
 
     async def chat(model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good illustration."}), model=model)
         assert ending in messages[0]["content"]
         return LLMResult(text=json.dumps({"images": [
             {"purpose": "Cosmic ray diagram", "role": "chapter", "source": "ai",
@@ -455,6 +462,8 @@ def test_generate_whole_chapter_image_preserves_legacy_section_slots(tmp_path):
     calls = []
 
     async def chat(model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good illustration."}), model=model)
         calls.append(messages[0]["content"])
         assert ending in messages[0]["content"]
         return LLMResult(text=json.dumps({"images": [{"role": "chapter", "purpose": "Discoveries together",

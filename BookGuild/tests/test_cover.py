@@ -51,6 +51,8 @@ class FakeIlluminator:
         self.painted = []
 
     async def chat(self, model, messages, **kwargs):
+        if isinstance(messages[0]["content"], list):
+            return LLMResult(text=json.dumps({"score": 85, "feedback": "Good cover composition."}), model=model)
         return LLMResult(text=json.dumps({"blurb": "Meet the scientists who changed the world.", "concepts": [
             {"name": f"Idea {i}", "art_prompt": f"art {i}", "title_position": "bottom" if i == 2 else "top",
              "background": "#102030", "text_color": "#ffffff", "accent": "#ffcc00"} for i in range(1, 4)]}),

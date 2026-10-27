@@ -12,6 +12,7 @@ The app, not the AI, draws all text: image models misspell words and add stray l
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ from bookguild.profile import BookProfile
 from bookguild.reliability import LLMError, TransientError
 from bookguild.stages.research import book_summary
 from bookguild.storage import Book
+from bookguild.image_review import MAX_IMPROVEMENTS, PASS_SCORE, refinement_prompt, review_image
 
 ART_RULES = ("Book cover artwork only. Absolutely no text, letters, numbers, titles, captions, logos, signatures "
              "or brand names. No recognisable real person.")
@@ -62,6 +64,7 @@ async def propose(job: CoverJob, spec: CoverSpec) -> CoverSpec:
         job.bus.log("You uploaded front art, so no concept art was painted - pick colours from a concept.",
                     stage="cover", agent="Illuminator")
         return spec
+    spec.chosen, spec.front_art = "", ""
     results = await asyncio.gather(*(paint(job, concept) for concept in spec.concepts), return_exceptions=True)
     for concept, outcome in zip(spec.concepts, results):
         if isinstance(outcome, LLMError):
@@ -78,14 +81,41 @@ async def paint(job: CoverJob, concept: CoverConcept) -> None:
     prompt = f"{concept.art_prompt}\nBook-wide image instructions: {job.profile.image_style}\n{ART_RULES}"
     if references:
         prompt += f"\n{REFERENCE_GUIDANCE}"
-    result = await job.gateway.generate_image(agent="Illuminator", stage="cover", model=job.models.cover_image,
-                                              prompt=prompt, aspect_ratio="2:3", size="2K",
-                                              reference_images=references)
-    relative = f"cover/concepts/{concept.id}.png"
-    path = job.book.folder / relative
+    feedback = []
+    for iteration in range(1, MAX_IMPROVEMENTS + 2):
+        attempt_prompt = refinement_prompt(prompt, feedback) if feedback else prompt
+        result = await job.gateway.generate_image(agent="Illuminator", stage="cover", model=job.models.cover_image,
+                                                  prompt=attempt_prompt, aspect_ratio="2:3", size="2K",
+                                                  reference_images=references)
+        relative = f"cover/concepts/{concept.id}.png" if iteration == 1 else f"cover/concepts/{concept.id}-{iteration}.png"
+        path = job.book.folder / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(result.images[0])
+        concept.art_file, concept.model = relative, result.model
+        review = {"score": None, "feedback": "Review pending", "file": relative}
+        concept.reviews.append(review)
+        _checkpoint_review(job, concept)
+        try:
+            outcome = await review_image(job, path, concept.art_prompt, book_summary(job.profile), references, "cover")
+        except LLMError as error:
+            review["feedback"] = f"Review failed: {error.message}"
+            _checkpoint_review(job, concept)
+            raise
+        review.update(outcome)
+        _checkpoint_review(job, concept)
+        job.bus.log(f"Cover {concept.id}, attempt {iteration}: {review['score']}/100 — {review['feedback']}",
+                    "success" if review["score"] > PASS_SCORE else "warning", "cover", "Image Reviewer")
+        if review["score"] > PASS_SCORE:
+            return
+        feedback.append(review["feedback"])
+    job.bus.log(f"Cover {concept.id}: stopped after three improvement attempts; no image passed review.",
+                "warning", "cover", "Image Reviewer")
+
+
+def _checkpoint_review(job: CoverJob, concept: CoverConcept) -> None:
+    path = job.book.folder / f"cover/reviews/{concept.id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(result.images[0])
-    concept.art_file, concept.model = relative, result.model
+    path.write_text(json.dumps(concept.reviews, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def concept_from(raw: dict, concept_id: str) -> CoverConcept:
@@ -104,6 +134,8 @@ def choose(spec: CoverSpec, concept_id: str) -> None:
     """Use a concept's art and colours (keeps your uploaded art if you have any)."""
     concept = next((c for c in spec.concepts if c.id == concept_id), None)
     if concept is None:
+        return
+    if concept.reviews and (concept.reviews[-1].get("score") or 0) <= PASS_SCORE:
         return
     spec.chosen = concept.id
     spec.background, spec.text_color, spec.accent = concept.background, concept.text_color, concept.accent

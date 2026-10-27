@@ -582,6 +582,7 @@ class BookSession:
         job = self._image_job()
         # This is an explicit AI request, independent of the automatic image policy.
         job.profile = replace(profile, image_strategy="ai_generated")
+        job.gateway.step_retry = lambda: self.generate_chapter_image(number)
         slots = self.image_slots()
         try:
             opener = next((s for s in slots if s.chapter == number and s.role == "chapter"), None)
@@ -680,6 +681,7 @@ class BookSession:
         self.busy = f"the Curator is {doing}"
         job = self._image_job()
         try:
+            job.gateway.step_retry = lambda: self._slot_action(slot_id, doing, action)
             ok = await self._image_step(job, slot, action(job, slot))
         finally:
             self.busy = None
@@ -756,7 +758,8 @@ class BookSession:
         finally:
             self.busy = None
         if not spec.chosen:
-            first = next((c for c in spec.concepts if c.art_file), spec.concepts[0] if spec.concepts else None)
+            first = next((c for c in spec.concepts if c.art_file and
+                          (not c.reviews or (c.reviews[-1].get("score") or 0) > 70)), None)
             if first:
                 cover_stage.choose(spec, first.id)
         self._store_cover(spec)
@@ -768,6 +771,9 @@ class BookSession:
         spec = self.cover()
         if not any(c.id == concept_id for c in spec.concepts):
             return f"There is no cover concept {concept_id}."
+        concept = next(c for c in spec.concepts if c.id == concept_id)
+        if concept.reviews and (concept.reviews[-1].get("score") or 0) <= 70:
+            return "This cover image has not passed review (score must exceed 70)."
         cover_stage.choose(spec, concept_id)
         self._store_cover(spec)
         return f"Using cover concept {concept_id}."
@@ -801,6 +807,9 @@ class BookSession:
         missing = [name for name, value in (("title", spec.title), ("author", spec.author)) if not value.strip()]
         if missing:
             return f"The cover needs a {' and '.join(missing)} first."
+        selected = next((c for c in spec.concepts if c.art_file == spec.front_art), None)
+        if selected and selected.reviews and (selected.reviews[-1].get("score") or 0) <= 70:
+            return "This cover image has not passed review (score must exceed 70)."
         profile = self.profile or BookProfile()
         pages = self.cover_pages(spec)
         files = export_cover(self.book, spec, profile, pages)
